@@ -2,6 +2,11 @@
 #include "PWM.h"
 #include "ti_msp_dl_config.h"
 
+/*
+ * TB6612 motor driver module.
+ * PWM controls speed. AIN1/AIN2 and BIN1/BIN2 control direction.
+ * Positive speed means the project's current "forward" wiring direction.
+ */
 static int16_t Motor_ClampSpeed(int32_t speed)
 {
     if (speed > (int32_t) PWM_DUTY_MAX) {
@@ -17,6 +22,7 @@ static int16_t Motor_ClampSpeed(int32_t speed)
 
 void Motor_Init(void)
 {
+    /* Enable TB6612, then actively stop both bridges. */
     PWM_Init();
     Motor_Enable();
     Motor_Stop();
@@ -35,6 +41,7 @@ void Motor_Disable(void)
 
 void Motor_Stop(void)
 {
+    /* Coast/stop by removing PWM and clearing both direction inputs. */
     PWM_SetDuty_L(0);
     PWM_SetDuty_R(0);
     DL_GPIO_clearPins(TB6612_PORTA_PORT,
@@ -52,6 +59,7 @@ void Motor_SetSpeed_L(int16_t Speed)
 {
     Speed = Motor_ClampSpeed(Speed);
 
+    /* Left bridge: positive and negative speeds swap AIN1/AIN2. */
     if (Speed > 0) {
         DL_GPIO_setPins(TB6612_PORTA_PORT, TB6612_PORTA_AIN1_PIN);
         DL_GPIO_clearPins(TB6612_PORTB_PORT, TB6612_PORTB_AIN2_PIN);
@@ -71,6 +79,7 @@ void Motor_SetSpeed_R(int16_t Speed)
 {
     Speed = Motor_ClampSpeed(Speed);
 
+    /* Right bridge: positive and negative speeds swap BIN1/BIN2. */
     if (Speed > 0) {
         DL_GPIO_setPins(TB6612_PORTA_PORT, TB6612_PORTA_BIN1_PIN);
         DL_GPIO_clearPins(TB6612_PORTA_PORT, TB6612_PORTA_BIN2_PIN);
