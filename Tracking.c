@@ -2,6 +2,12 @@
 #include "Motor.h"
 #include "ti_msp_dl_config.h"
 
+/*
+ * LongQiu 8-channel grayscale tracking module.
+ * The sensor board exposes one analog output (AS) and three select pins
+ * (S0/S1/S2). This driver selects each channel, samples ADC, then computes
+ * a weighted line-position error for the navigation state machine.
+ */
 unsigned char LQ_Tracking_Value[TRACKING_CHANNEL_COUNT] = {0};
 volatile int16_t Tracking_Error = 0;
 volatile int16_t Tracking_Correction = 0;
@@ -12,6 +18,7 @@ static int16_t Tracking_LastControlError = 0;
 
 static void Tracking_ShortDelay(void)
 {
+    /* Let the analog mux output settle after S0/S1/S2 changes. */
     delay_cycles(CPUCLK_FREQ / 200000U);
 }
 
@@ -31,6 +38,7 @@ static uint16_t Tracking_GetLineStrength(uint8_t index)
     uint16_t value = LQ_Tracking_Value[index];
 
 #if !TRACKING_BLACK_IS_HIGH
+    /* Normalize so larger strength always means "more black line". */
     value = TRACKING_VALUE_MAX - value;
 #endif
 
@@ -48,6 +56,7 @@ void Tracking_Init(void)
 
 void Tracking_Adc_Init(void)
 {
+    /* Select channel 1 first and enable ADC conversions. */
     Tracking_IO_Set(0, 0, 0);
     DL_ADC12_enableConversions(ADC12_0_INST);
 }
@@ -57,6 +66,7 @@ void Tracking_IO_Set(unsigned char s2, unsigned char s1, unsigned char s0)
     uint32_t setPins = 0U;
     uint32_t clearPins = TRACKING_SEL_S0_PIN | TRACKING_SEL_S1_PIN | TRACKING_SEL_S2_PIN;
 
+    /* Convert the channel select bits into GPIO set/clear masks. */
     if (s0 != 0U) {
         setPins |= TRACKING_SEL_S0_PIN;
     }
@@ -78,6 +88,7 @@ uint16_t Tracking_Adc_once(void)
 {
     uint32_t timeout = 100000U;
 
+    /* Start one single ADC conversion and wait for MEM0 to be ready. */
     DL_ADC12_clearInterruptStatus(ADC12_0_INST, DL_ADC12_INTERRUPT_MEM0_RESULT_LOADED);
     DL_ADC12_startConversion(ADC12_0_INST);
 
@@ -88,6 +99,7 @@ uint16_t Tracking_Adc_once(void)
     }
 
     if (timeout == 0U) {
+        /* Fail safe: keep ADC enabled and return a no-line-like value. */
         DL_ADC12_enableConversions(ADC12_0_INST);
         return 0;
     }
@@ -105,6 +117,10 @@ unsigned int Tracking_Value_once(unsigned char ch)
     const uint8_t numSamples = 5;
     const uint8_t discardSamples = 3;
 
+    /*
+     * For each channel, take several reads after selecting the mux channel.
+     * The first reads are discarded to reduce mux-settling noise.
+     */
     for (i = 0; i < numSamples; i++) {
         switch (ch) {
             case 1: Tracking_IO_Set(0, 0, 0); break;
@@ -118,6 +134,7 @@ unsigned int Tracking_Value_once(unsigned char ch)
             default: Tracking_IO_Set(0, 0, 0); break;
         }
 
+        /* Scale 12-bit ADC reading to the 0..100 range used by thresholds. */
         data = (uint16_t)(((uint32_t)Tracking_Adc_once() * TRACKING_VALUE_MAX) / 4095U);
         if (data > TRACKING_VALUE_MAX) {
             data = TRACKING_VALUE_MAX;
@@ -135,6 +152,7 @@ void Tracking_Value_Acquire(void)
 {
     uint8_t i;
 
+    /* Refresh the global 8-channel grayscale array. */
     for (i = 0; i < TRACKING_CHANNEL_COUNT; i++) {
         LQ_Tracking_Value[i] = (unsigned char)Tracking_Value_once(i + 1U);
     }
@@ -142,6 +160,10 @@ void Tracking_Value_Acquire(void)
 
 int16_t Tracking_CalcError(void)
 {
+    /*
+     * Negative weights are left sensors and positive weights are right sensors.
+     * The weighted average gives line position error around the center.
+     */
     static const int16_t weight[TRACKING_CHANNEL_COUNT] = {
         -3500, -2500, -1500, -500, 500, 1500, 2500, 3500
     };
@@ -157,6 +179,7 @@ int16_t Tracking_CalcError(void)
     }
 
     if (total == 0U) {
+        /* No line: keep last error so the next line reacquire has continuity. */
         Tracking_LineDetected = 0;
         Tracking_Error = Tracking_LastError;
         return Tracking_Error;
@@ -181,11 +204,13 @@ void Tracking_LineFollowStep(void)
     error = Tracking_CalcError();
 
     if (Tracking_LineDetected == 0U) {
+        /* Standalone helper behavior: stop if no line is visible. */
         Tracking_Correction = 0;
         Motor_Stop();
         return;
     }
 
+    /* This helper is kept for direct line-follow tests; NAV has its own copy. */
     derivative = error - Tracking_LastControlError;
     Tracking_LastControlError = error;
 

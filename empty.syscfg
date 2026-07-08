@@ -26,6 +26,14 @@ const UART1  = UART.addInstance();
 
 /**
  * Write custom configuration values to the imported modules.
+ *
+ * Hardware map used by the application:
+ * - TB6612_PORTB/PORTA: motor direction and standby pins.
+ * - TRACKING_SEL + ADC12_0: LongQiu 8-channel grayscale sensor mux.
+ * - ENCODER_PORTB: left/right motor quadrature encoder inputs.
+ * - OLED_I2C: software-I2C OLED pins.
+ * - PWM_0: left/right TB6612 speed PWM channels.
+ * - UART_0: MS901M gyro serial input.
  */
 GPIO1.$name                         = "TB6612_PORTB";
 GPIO1.port                          = "PORTB";
