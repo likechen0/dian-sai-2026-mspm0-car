@@ -4,11 +4,11 @@
 #include "MS901M.h"
 
 /*
- * OLED 显示模块。
- * 第 1 行：左轮编码器采样速度。
- * 第 2 行：右轮编码器采样速度。
- * 第 3 行：MS901M yaw 航向角和数据有效状态。
- * 第 4 行：MS901M pitch / roll 姿态角。
+ * OLED display:
+ * Line 1: left wheel encoder sample count.
+ * Line 2: right wheel encoder sample count.
+ * Line 3: MS901M yaw and valid-angle-frame state.
+ * Line 4: MS901M pitch, roll, and UART byte heartbeat.
  */
 static uint16_t Display_AbsCdeg(int16_t value)
 {
@@ -42,6 +42,7 @@ static void Display_ShowSignedDeg(uint8_t line, uint8_t column, int16_t value)
 static void Display_ShowGyro(void)
 {
     uint8_t gyroOk = MS901M_Available() ? 1U : 0U;
+    uint16_t rxBeat = MS901M_GetRxByteCount() % 10U;
 
     OLED_ShowString(3, 1, "Y:");
     Display_ShowSignedCdeg(3, 3, MS901M_GetYawCdeg());
@@ -53,7 +54,8 @@ static void Display_ShowGyro(void)
     Display_ShowSignedDeg(4, 3, MS901M_GetPitchCdeg());
     OLED_ShowString(4, 7, " R:");
     Display_ShowSignedDeg(4, 10, MS901M_GetRollCdeg());
-    OLED_ShowString(4, 14, "   ");
+    OLED_ShowString(4, 14, "B:");
+    OLED_ShowNum(4, 16, rxBeat, 1);
 }
 
 void Display_Init(void)
@@ -61,18 +63,16 @@ void Display_Init(void)
     OLED_Init();
     OLED_Clear();
 
-    /* 先画固定宽度模板，后续刷新时不容易闪烁和残影。 */
     OLED_ShowString(1, 1, "W1:+00000      ");
     OLED_ShowString(2, 1, "W2:+00000      ");
     OLED_ShowString(3, 1, "Y:+000.00 OK:0 ");
-    OLED_ShowString(4, 1, "P:+000 R:+000  ");
+    OLED_ShowString(4, 1, "P:+000 R:+000B:0");
 }
 
 void Display_Update(void)
 {
     static uint8_t divider = 0;
 
-    /* OLED 刷新较慢，所以这里做分频，不是每个控制周期都真正刷新。 */
     divider++;
     if (divider < DISPLAY_UPDATE_DIVIDER) {
         return;

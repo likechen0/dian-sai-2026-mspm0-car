@@ -281,7 +281,13 @@ SYSCONFIG_WEAK void SYSCFG_DL_UART_0_init(void)
 
     /* Configure Interrupts */
     DL_UART_Main_enableInterrupt(UART_0_INST,
-                                 DL_UART_MAIN_INTERRUPT_RX);
+                                 DL_UART_MAIN_INTERRUPT_BREAK_ERROR |
+                                 DL_UART_MAIN_INTERRUPT_FRAMING_ERROR |
+                                 DL_UART_MAIN_INTERRUPT_NOISE_ERROR |
+                                 DL_UART_MAIN_INTERRUPT_OVERRUN_ERROR |
+                                 DL_UART_MAIN_INTERRUPT_PARITY_ERROR |
+                                 DL_UART_MAIN_INTERRUPT_RX |
+                                 DL_UART_MAIN_INTERRUPT_RX_TIMEOUT_ERROR);
 
 
     DL_UART_Main_enable(UART_0_INST);

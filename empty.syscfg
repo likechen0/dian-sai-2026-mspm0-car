@@ -131,7 +131,7 @@ ADC121.peripheral.$assign         = "ADC0";
 ADC121.peripheral.adcPin2.$assign = "PA25";
 
 UART1.$name                    = "UART_0";
-UART1.enabledInterrupts        = ["RX"];
+UART1.enabledInterrupts        = ["BREAK_ERROR","FRAMING_ERROR","NOISE_ERROR","OVERRUN_ERROR","PARITY_ERROR","RX","RX_TIMEOUT_ERROR"];
 UART1.targetBaudRate           = 115200;
 UART1.peripheral.$assign       = "UART0";
 UART1.peripheral.rxPin.$assign = "PA11";
