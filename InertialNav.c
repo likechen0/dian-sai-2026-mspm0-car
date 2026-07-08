@@ -3,6 +3,17 @@
 #include "MS901M.h"
 #include "Tracking.h"
 
+/*
+ * Navigation state machine.
+ *
+ * Normal behavior:
+ *   - If no line is detected, drive straight at NAV_FORWARD_SPEED.
+ *   - If a line is detected, follow it with PD correction.
+ *   - Only after the car has followed a stable line, a stable line-loss event
+ *     is counted. Odd counts turn left 45 degrees; even counts turn right.
+ *
+ * Angles are centidegrees: 4500 means 45.00 degrees.
+ */
 #define NAV_FORWARD_SPEED       2500
 #define NAV_TURN_45_CDEG        4500
 #define NAV_TURN_DONE_CDEG      250
@@ -18,8 +29,13 @@
 #define NAV_RIGHT_RIGHT_SPEED   (-1800)
 
 typedef enum {
+    /* Line is visible and PD correction is controlling the motors. */
     NAV_MODE_LINE = 0,
+
+    /* No line is visible, so both wheels run at the same default speed. */
     NAV_MODE_FORWARD,
+
+    /* Gyro is controlling an in-place fixed-angle turn. */
     NAV_MODE_GYRO_TURN
 } NavMode_t;
 
@@ -28,9 +44,13 @@ static int16_t gTargetYawCdeg;
 static int16_t gTurnLeftSpeed;
 static int16_t gTurnRightSpeed;
 static int16_t gLastControlError;
+
+/* Debounce state for "line -> no line" events. */
 static uint8_t gLineStableCount;
 static uint8_t gLostStableCount;
 static uint8_t gLineTurnArmed;
+
+/* Turn watchdog and OLED-visible line-leave counter. */
 static uint16_t gTurnStepCount;
 static uint16_t gLinePassCount;
 
@@ -48,6 +68,7 @@ static int16_t NAV_LimitSpeed(int32_t speed)
 
 static int16_t NAV_WrapTarget(int32_t target)
 {
+    /* Keep target yaw inside the same range used by MS901M_GetYawCdeg(). */
     while (target > 18000) {
         target -= 36000;
     }
@@ -60,6 +81,7 @@ static int16_t NAV_WrapTarget(int32_t target)
 
 static void NAV_ClearLineState(void)
 {
+    /* Clear only the debounce/arming state, not the visible pass counter. */
     gLineStableCount = 0;
     gLostStableCount = 0;
     gLineTurnArmed = 0;
@@ -69,11 +91,16 @@ static uint8_t NAV_UpdateLinePassCounter(void)
 {
     uint8_t now = Tracking_LineDetected ? 1U : 0U;
 
+    /*
+     * Ignore line edges during a gyro turn. Otherwise the sensor can see the
+     * same line while rotating and count it again.
+     */
     if (gMode == NAV_MODE_GYRO_TURN) {
         return 0U;
     }
 
     if (now != 0U) {
+        /* Require several consecutive line readings before arming a turn. */
         if (gLineStableCount < NAV_LINE_STABLE_CYCLES) {
             gLineStableCount++;
         }
@@ -88,6 +115,7 @@ static uint8_t NAV_UpdateLinePassCounter(void)
     gLineStableCount = 0;
 
     if (gLineTurnArmed == 0U) {
+        /* Starting on white ground does not count as losing a line. */
         gLostStableCount = 0;
         return 0U;
     }
@@ -97,6 +125,7 @@ static uint8_t NAV_UpdateLinePassCounter(void)
     }
 
     if (gLostStableCount < NAV_LOST_STABLE_CYCLES) {
+        /* Require several consecutive no-line readings before counting. */
         return 0U;
     }
 
@@ -114,6 +143,7 @@ static void NAV_LineFollowFromCurrentError(void)
     int16_t derivative = error - gLastControlError;
     int32_t correction;
 
+    /* PD controller: P follows position error, D damps sudden error changes. */
     gLastControlError = error;
 
     correction = ((int32_t)error * TRACKING_KP_NUM) / TRACKING_KP_DEN;
@@ -131,6 +161,7 @@ static void NAV_LineFollowFromCurrentError(void)
 
 static void NAV_FinishTurn(void)
 {
+    /* After a fixed-angle turn, resume straight driving on white ground. */
     gMode = NAV_MODE_FORWARD;
     NAV_ClearLineState();
     Tracking_Correction = 0;
@@ -139,6 +170,7 @@ static void NAV_FinishTurn(void)
 
 static uint8_t NAV_TurnTimeoutExpired(void)
 {
+    /* Safety: do not spin forever if gyro direction or wiring is wrong. */
     if (gTurnStepCount < NAV_TURN_TIMEOUT_STEPS) {
         gTurnStepCount++;
     }
@@ -153,6 +185,7 @@ static uint8_t NAV_TurnTimeoutExpired(void)
 
 static void NAV_FallbackWhenGyroMissing(void)
 {
+    /* If gyro data is missing, keep the car usable instead of locking in turn. */
     if (Tracking_LineDetected != 0U) {
         gMode = NAV_MODE_LINE;
         NAV_LineFollowFromCurrentError();
@@ -175,6 +208,7 @@ static void NAV_StartTurnCdeg(int16_t angleCdeg, int8_t yawSign,
 {
     int16_t yaw = MS901M_GetYawCdeg();
 
+    /* Build an absolute target yaw from the current yaw and desired offset. */
     gTargetYawCdeg = NAV_WrapTarget((int32_t)yaw +
         ((int32_t)yawSign * angleCdeg));
     gTurnLeftSpeed = leftSpeed;
@@ -192,6 +226,7 @@ static void NAV_StartLeftTurnCdeg(int16_t angleCdeg)
 
 static void NAV_StartTurnByLineCount(void)
 {
+    /* First counted line-loss: left. Second: right. Then repeat. */
     if ((gLinePassCount & 1U) != 0U) {
         NAV_StartLeftTurnCdeg(NAV_TURN_45_CDEG);
     } else {
@@ -213,6 +248,7 @@ static void NAV_GyroTurnStep(void)
     int16_t yaw = MS901M_GetYawCdeg();
     int16_t error = MS901M_YawErrorCdeg(gTargetYawCdeg, yaw);
 
+    /* Stop turning once the target is reached within the tolerance window. */
     if ((error > -NAV_TURN_DONE_CDEG) && (error < NAV_TURN_DONE_CDEG)) {
         NAV_FinishTurn();
         return;
@@ -223,6 +259,7 @@ static void NAV_GyroTurnStep(void)
 
 void NAV_Init(void)
 {
+    /* Start in safe forward mode; movement is commanded by NAV_ControlStep(). */
     gMode = NAV_MODE_FORWARD;
     gTargetYawCdeg = 0;
     gTurnLeftSpeed = NAV_RIGHT_LEFT_SPEED;
@@ -245,16 +282,19 @@ void NAV_ControlStep(void)
 {
     uint8_t lineLost;
 
+    /* Sensor processing happens before state decisions. */
     Tracking_Value_Acquire();
     Tracking_CalcError();
     lineLost = NAV_UpdateLinePassCounter();
 
+    /* Fixed-angle turn has the highest priority until it finishes or times out. */
     if (gMode == NAV_MODE_GYRO_TURN) {
         NAV_GyroTurnStep();
         return;
     }
 
     if (lineLost != 0U) {
+        /* A real line-leave event triggers the odd/even turn rule. */
         if (!MS901M_Available()) {
             NAV_FallbackWhenGyroMissing();
             return;
@@ -266,6 +306,7 @@ void NAV_ControlStep(void)
     }
 
     if (Tracking_LineDetected != 0U) {
+        /* Ordinary line-following branch. */
         gMode = NAV_MODE_LINE;
         NAV_LineFollowFromCurrentError();
         return;
@@ -275,6 +316,7 @@ void NAV_ControlStep(void)
     Tracking_Correction = 0;
     Motor_SetSpeed(NAV_FORWARD_SPEED, NAV_FORWARD_SPEED);
 
+    /* Keep D-term calm when re-entering line-follow mode later. */
     gLastControlError = Tracking_Error;
 }
 
