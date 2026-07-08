@@ -10,11 +10,9 @@ GEN_OPTS__FLAG := @"./device.opt"
 GEN_CMDS__FLAG := -Wl,-l"./device_linker.cmd" 
 
 ORDERED_OBJS += \
-"./AD.o" \
 "./Delay.o" \
 "./Display.o" \
 "./Encoder.o" \
-"./FIND.o" \
 "./InertialNav.o" \
 "./MS901M.o" \
 "./Motor.o" \
@@ -147,8 +145,8 @@ empty.out: $(OBJS) $(GEN_CMDS)
 # Other Targets
 clean:
 	-$(RM) $(GEN_MISC_FILES__QUOTED)$(GEN_FILES__QUOTED)$(EXE_OUTPUTS__QUOTED)
-	-$(RM) "AD.o" "Delay.o" "Display.o" "Encoder.o" "FIND.o" "InertialNav.o" "MS901M.o" "Motor.o" "OLED.o" "PWM.o" "Tracking.o" "empty.o" "ti_msp_dl_config.o" "startup_mspm0g350x_ticlang.o" 
-	-$(RM) "AD.d" "Delay.d" "Display.d" "Encoder.d" "FIND.d" "InertialNav.d" "MS901M.d" "Motor.d" "OLED.d" "PWM.d" "Tracking.d" "empty.d" "ti_msp_dl_config.d" "startup_mspm0g350x_ticlang.d" 
+	-$(RM) "Delay.o" "Display.o" "Encoder.o" "InertialNav.o" "MS901M.o" "Motor.o" "OLED.o" "PWM.o" "Tracking.o" "empty.o" "ti_msp_dl_config.o" "startup_mspm0g350x_ticlang.o" 
+	-$(RM) "Delay.d" "Display.d" "Encoder.d" "InertialNav.d" "MS901M.d" "Motor.d" "OLED.d" "PWM.d" "Tracking.d" "empty.d" "ti_msp_dl_config.d" "startup_mspm0g350x_ticlang.d" 
 	-@echo ' '
 
 .PHONY: all clean dependents

@@ -9,11 +9,9 @@ SYSCFG_SRCS += \
 ../empty.syscfg 
 
 C_SRCS += \
-../AD.c \
 ../Delay.c \
 ../Display.c \
 ../Encoder.c \
-../FIND.c \
 ../InertialNav.c \
 ../MS901M.c \
 ../Motor.c \
@@ -33,11 +31,9 @@ GEN_FILES += \
 ./ti_msp_dl_config.c 
 
 C_DEPS += \
-./AD.d \
 ./Delay.d \
 ./Display.d \
 ./Encoder.d \
-./FIND.d \
 ./InertialNav.d \
 ./MS901M.d \
 ./Motor.d \
@@ -52,11 +48,9 @@ GEN_OPTS += \
 ./device.opt 
 
 OBJS += \
-./AD.o \
 ./Delay.o \
 ./Display.o \
 ./Encoder.o \
-./FIND.o \
 ./InertialNav.o \
 ./MS901M.o \
 ./Motor.o \
@@ -73,11 +67,9 @@ GEN_MISC_FILES += \
 ./Event.dot 
 
 OBJS__QUOTED += \
-"AD.o" \
 "Delay.o" \
 "Display.o" \
 "Encoder.o" \
-"FIND.o" \
 "InertialNav.o" \
 "MS901M.o" \
 "Motor.o" \
@@ -94,11 +86,9 @@ GEN_MISC_FILES__QUOTED += \
 "Event.dot" 
 
 C_DEPS__QUOTED += \
-"AD.d" \
 "Delay.d" \
 "Display.d" \
 "Encoder.d" \
-"FIND.d" \
 "InertialNav.d" \
 "MS901M.d" \
 "Motor.d" \
@@ -115,11 +105,9 @@ GEN_FILES__QUOTED += \
 "ti_msp_dl_config.c" 
 
 C_SRCS__QUOTED += \
-"../AD.c" \
 "../Delay.c" \
 "../Display.c" \
 "../Encoder.c" \
-"../FIND.c" \
 "../InertialNav.c" \
 "../MS901M.c" \
 "../Motor.c" \

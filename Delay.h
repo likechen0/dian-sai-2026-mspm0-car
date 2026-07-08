@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 
+/* Blocking delay in milliseconds. */
 void Delay_ms(uint32_t ms);
 
 #endif
