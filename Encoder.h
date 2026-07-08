@@ -3,28 +3,28 @@
 
 #include <stdint.h>
 
-/* Encoder speed is reported as counts collected during this sample window. */
+/* 编码器速度值表示这个采样窗口内收到的脉冲数。 */
 #define ENCODER_SAMPLE_MS 10U
 
-/* Change to -1 if the displayed speed direction is opposite. */
+/* 如果 OLED 上显示的速度方向反了，就把对应宏改成 -1。 */
 #define ENCODER_LEFT_DIR  1
 #define ENCODER_RIGHT_DIR 1
 
-/* Latest sampled encoder counts for OLED display or speed feedback. */
+/* 最近一次采样得到的左右轮脉冲数，可用于 OLED 显示或速度反馈。 */
 extern volatile int16_t Encoder_LeftSpeed;
 extern volatile int16_t Encoder_RightSpeed;
 
-/* Configure encoder GPIO interrupt state. */
+/* 配置编码器 GPIO 中断状态。 */
 void Encoder_Init(void);
 
-/* Snapshot interrupt counts and reset the accumulators. */
+/* 读取中断累计脉冲数，并把累计值清零。 */
 void Encoder_Update(void);
 
-/* Return the latest sampled counts. */
+/* 返回最近一次采样值。 */
 int16_t Encoder_GetLeftSpeed(void);
 int16_t Encoder_GetRightSpeed(void);
 
-/* Optional helper when the encoder counts-per-revolution is known. */
+/* 如果知道每圈脉冲数，可以用这个函数把采样值换算成 RPM。 */
 int32_t Encoder_CountToRPM(int16_t count, uint16_t sampleMs, uint16_t countsPerRev);
 
 #endif

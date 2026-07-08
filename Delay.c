@@ -2,8 +2,8 @@
 #include "ti_msp_dl_config.h"
 
 /*
- * Blocking millisecond delay based on the SysConfig CPU clock.
- * Use it only in the main loop or simple drivers; do not call it inside ISRs.
+ * 基于 SysConfig 配置的 CPU 时钟做阻塞毫秒延时。
+ * 只适合在主循环或简单驱动里用，不要放进中断函数。
  */
 void Delay_ms(uint32_t ms)
 {

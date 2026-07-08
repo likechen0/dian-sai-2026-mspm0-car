@@ -3,9 +3,9 @@
 #include "ti_msp_dl_config.h"
 
 /*
- * TB6612 motor driver module.
- * PWM controls speed. AIN1/AIN2 and BIN1/BIN2 control direction.
- * Positive speed means the project's current "forward" wiring direction.
+ * TB6612 电机驱动模块。
+ * PWM 控制速度，AIN1/AIN2 和 BIN1/BIN2 控制方向。
+ * 速度为正表示当前接线下定义的“前进”方向。
  */
 static int16_t Motor_ClampSpeed(int32_t speed)
 {
@@ -22,7 +22,7 @@ static int16_t Motor_ClampSpeed(int32_t speed)
 
 void Motor_Init(void)
 {
-    /* Enable TB6612, then actively stop both bridges. */
+    /* 先打开 TB6612 的 STBY，再主动停止两路 H 桥。 */
     PWM_Init();
     Motor_Enable();
     Motor_Stop();
@@ -41,7 +41,7 @@ void Motor_Disable(void)
 
 void Motor_Stop(void)
 {
-    /* Coast/stop by removing PWM and clearing both direction inputs. */
+    /* 去掉 PWM，并清空方向脚，让两路电机停止。 */
     PWM_SetDuty_L(0);
     PWM_SetDuty_R(0);
     DL_GPIO_clearPins(TB6612_PORTA_PORT,
@@ -59,7 +59,7 @@ void Motor_SetSpeed_L(int16_t Speed)
 {
     Speed = Motor_ClampSpeed(Speed);
 
-    /* Left bridge: positive and negative speeds swap AIN1/AIN2. */
+    /* 左电机：正负速度通过交换 AIN1/AIN2 实现正反转。 */
     if (Speed > 0) {
         DL_GPIO_setPins(TB6612_PORTA_PORT, TB6612_PORTA_AIN1_PIN);
         DL_GPIO_clearPins(TB6612_PORTB_PORT, TB6612_PORTB_AIN2_PIN);
@@ -79,7 +79,7 @@ void Motor_SetSpeed_R(int16_t Speed)
 {
     Speed = Motor_ClampSpeed(Speed);
 
-    /* Right bridge: positive and negative speeds swap BIN1/BIN2. */
+    /* 右电机：正负速度通过交换 BIN1/BIN2 实现正反转。 */
     if (Speed > 0) {
         DL_GPIO_setPins(TB6612_PORTA_PORT, TB6612_PORTA_BIN1_PIN);
         DL_GPIO_clearPins(TB6612_PORTA_PORT, TB6612_PORTA_BIN2_PIN);

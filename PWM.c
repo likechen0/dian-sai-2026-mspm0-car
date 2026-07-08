@@ -2,9 +2,9 @@
 #include "ti_msp_dl_config.h"
 
 /*
- * TB6612 speed PWM module.
- * SysConfig maps PWM_0 channel 0 to the left motor PWM pin and channel 1 to
- * the right motor PWM pin. Duty is represented as 0..10000 for easy PID math.
+ * TB6612 调速 PWM 模块。
+ * SysConfig 把 PWM_0 通道 0 映射到左电机 PWM，把通道 1 映射到右电机 PWM。
+ * 占空比用 0..10000 表示，方便 PID 和速度命令计算。
  */
 static uint32_t PWM_DutyToCompare(uint32_t duty)
 {
@@ -14,7 +14,7 @@ static uint32_t PWM_DutyToCompare(uint32_t duty)
 
     uint32_t period = DL_Timer_getLoadValue(PWM_0_INST);
 
-    /* Timer output is active-low in this setup, so duty is inverted to compare. */
+    /* 当前 PWM 输出是低有效，所以占空比要反算成定时器比较值。 */
     return period - ((duty * period) / PWM_DUTY_MAX);
 }
 
@@ -25,7 +25,7 @@ static void PWM_SetChannel(uint16_t duty, DL_TIMER_CC_INDEX channel)
 
 void PWM_Init(void)
 {
-    /* Start from 0 duty before enabling motion. */
+    /* 启动定时器前先把两路占空比清零，避免上电乱动。 */
     PWM_SetDuty_L(0);
     PWM_SetDuty_R(0);
     DL_TimerA_startCounter(PWM_0_INST);

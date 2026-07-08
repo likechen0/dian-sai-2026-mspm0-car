@@ -6,25 +6,24 @@
 #include "ti_msp_dl_config.h"
 
 /*
- * Simple software-I2C SSD1306 OLED driver.
- * This project uses PB10/PB11 as open-drain-like GPIOs. A logic high is made
- * by releasing the pin, and a low is made by driving it low.
+ * 简单的软件 I2C SSD1306 OLED 驱动。
+ * 本工程用 PB10/PB11 模拟开漏：高电平靠释放引脚，低电平主动拉低。
  */
 #define OLED_ADDRESS 0x78U
 
 static void OLED_I2C_Delay(void)
 {
-    /* Short delay between software-I2C edges. */
+    /* 软件 I2C 翻转边沿之间的短延时。 */
     delay_cycles(CPUCLK_FREQ / 1000000U);
 }
 
 static void OLED_WritePin(uint32_t pin, uint8_t level)
 {
     if (level != 0U) {
-        /* Release line high; external/internal pull-up raises it. */
+        /* 释放引脚，让外部/内部上拉把线拉高。 */
         DL_GPIO_disableOutput(OLED_I2C_PORT, pin);
     } else {
-        /* Actively drive line low. */
+        /* 主动输出低电平。 */
         DL_GPIO_clearPins(OLED_I2C_PORT, pin);
         DL_GPIO_enableOutput(OLED_I2C_PORT, pin);
     }
@@ -43,7 +42,7 @@ static void OLED_I2C_Init(void)
 
 static void OLED_I2C_Start(void)
 {
-    /* I2C start: SDA falls while SCL is high. */
+    /* I2C 起始信号：SCL 为高时 SDA 下降。 */
     OLED_W_SDA(1);
     OLED_W_SCL(1);
     OLED_W_SDA(0);
@@ -52,7 +51,7 @@ static void OLED_I2C_Start(void)
 
 static void OLED_I2C_Stop(void)
 {
-    /* I2C stop: SDA rises while SCL is high. */
+    /* I2C 停止信号：SCL 为高时 SDA 上升。 */
     OLED_W_SDA(0);
     OLED_W_SCL(1);
     OLED_W_SDA(1);
@@ -62,7 +61,7 @@ static void OLED_I2C_SendByte(uint8_t Byte)
 {
     uint8_t i;
 
-    /* Send MSB first. ACK is ignored to keep the driver simple. */
+    /* 先发高位。为了驱动简单，这里忽略 ACK。 */
     for (i = 0; i < 8U; i++) {
         OLED_W_SDA((Byte & (0x80U >> i)) != 0U);
         OLED_W_SCL(1);
@@ -76,7 +75,7 @@ static void OLED_I2C_SendByte(uint8_t Byte)
 
 static void OLED_WriteCommand(uint8_t Command)
 {
-    /* Control byte 0x00 selects command mode. */
+    /* 控制字节 0x00 表示后面发送命令。 */
     OLED_I2C_Start();
     OLED_I2C_SendByte(OLED_ADDRESS);
     OLED_I2C_SendByte(0x00U);
@@ -86,7 +85,7 @@ static void OLED_WriteCommand(uint8_t Command)
 
 static void OLED_WriteData(uint8_t Data)
 {
-    /* Control byte 0x40 selects display data mode. */
+    /* 控制字节 0x40 表示后面发送显示数据。 */
     OLED_I2C_Start();
     OLED_I2C_SendByte(OLED_ADDRESS);
     OLED_I2C_SendByte(0x40U);
@@ -96,7 +95,7 @@ static void OLED_WriteData(uint8_t Data)
 
 static void OLED_SetCursor(uint8_t Y, uint8_t X)
 {
-    /* SSD1306 page addressing: Y is page, X is column. */
+    /* SSD1306 页寻址：Y 是页，X 是列。 */
     OLED_WriteCommand(0xB0U | Y);
     OLED_WriteCommand(0x10U | ((X & 0xF0U) >> 4U));
     OLED_WriteCommand(0x00U | (X & 0x0FU));
@@ -107,7 +106,7 @@ void OLED_Clear(void)
     uint8_t i;
     uint8_t j;
 
-    /* Clear all 8 pages x 128 columns. */
+    /* 清空 8 页 x 128 列的所有像素。 */
     for (j = 0; j < 8U; j++) {
         OLED_SetCursor(j, 0);
         for (i = 0; i < 128U; i++) {
@@ -121,7 +120,7 @@ void OLED_ShowChar(uint8_t Line, uint8_t Column, char Char)
     uint8_t i;
     uint8_t index;
 
-    /* This font is 8x16, so the display is treated as 4 lines x 16 columns. */
+    /* 字模是 8x16，所以屏幕按 4 行 x 16 列使用。 */
     if ((Line < 1U) || (Line > 4U) || (Column < 1U) || (Column > 16U)) {
         return;
     }
@@ -145,7 +144,7 @@ void OLED_ShowString(uint8_t Line, uint8_t Column, const char *String)
 {
     uint8_t i;
 
-    /* Stop at the right edge instead of wrapping into the next line. */
+    /* 到达右边界就停止显示，不自动换到下一行。 */
     for (i = 0; String[i] != '\0'; i++) {
         if ((Column + i) > 16U) {
             break;
@@ -221,12 +220,12 @@ void OLED_ShowBinNum(uint8_t Line, uint8_t Column, uint32_t Number, uint8_t Leng
 
 void OLED_Init(void)
 {
-    /* Give the OLED panel time to power up before sending commands. */
+    /* OLED 上电后先等一会儿，再发送初始化命令。 */
     delay_cycles(CPUCLK_FREQ / 10U);
 
     OLED_I2C_Init();
 
-    /* Standard SSD1306 init sequence for 128x64 display. */
+    /* 128x64 SSD1306 的常规初始化序列。 */
     OLED_WriteCommand(0xAEU);
     OLED_WriteCommand(0xD5U);
     OLED_WriteCommand(0x80U);

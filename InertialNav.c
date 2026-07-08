@@ -4,15 +4,15 @@
 #include "Tracking.h"
 
 /*
- * Navigation state machine.
+ * 导航状态机。
  *
- * Normal behavior:
- *   - If no line is detected, drive straight at NAV_FORWARD_SPEED.
- *   - If a line is detected, follow it with PD correction.
- *   - Only after the car has followed a stable line, a stable line-loss event
- *     is counted. Odd counts turn left 45 degrees; even counts turn right.
+ * 正常行为：
+ *   - 没检测到线：按 NAV_FORWARD_SPEED 白地直行。
+ *   - 检测到线：用 PD 修正左右轮速度，进行巡线。
+ *   - 只有先稳定巡线，再稳定丢线，才计为一次“经过线”。
+ *   - 计数为奇数左转 45 度，计数为偶数右转 45 度。
  *
- * Angles are centidegrees: 4500 means 45.00 degrees.
+ * 角度单位是 0.01 度：4500 表示 45.00 度。
  */
 #define NAV_FORWARD_SPEED       2500
 #define NAV_TURN_45_CDEG        4500
@@ -29,13 +29,13 @@
 #define NAV_RIGHT_RIGHT_SPEED   (-1800)
 
 typedef enum {
-    /* Line is visible and PD correction is controlling the motors. */
+    /* 有线状态：由 PD 修正控制左右轮。 */
     NAV_MODE_LINE = 0,
 
-    /* No line is visible, so both wheels run at the same default speed. */
+    /* 无线状态：两轮同速，白地直行。 */
     NAV_MODE_FORWARD,
 
-    /* Gyro is controlling an in-place fixed-angle turn. */
+    /* 陀螺仪转向状态：原地固定角度转弯。 */
     NAV_MODE_GYRO_TURN
 } NavMode_t;
 
@@ -45,12 +45,12 @@ static int16_t gTurnLeftSpeed;
 static int16_t gTurnRightSpeed;
 static int16_t gLastControlError;
 
-/* Debounce state for "line -> no line" events. */
+/* “有线 -> 没线”事件的消抖状态。 */
 static uint8_t gLineStableCount;
 static uint8_t gLostStableCount;
 static uint8_t gLineTurnArmed;
 
-/* Turn watchdog and OLED-visible line-leave counter. */
+/* 转向超时保护，以及 OLED 上显示的丢线计数。 */
 static uint16_t gTurnStepCount;
 static uint16_t gLinePassCount;
 
@@ -68,7 +68,7 @@ static int16_t NAV_LimitSpeed(int32_t speed)
 
 static int16_t NAV_WrapTarget(int32_t target)
 {
-    /* Keep target yaw inside the same range used by MS901M_GetYawCdeg(). */
+    /* 把目标角度限制到 MS901M_GetYawCdeg() 使用的同一范围。 */
     while (target > 18000) {
         target -= 36000;
     }
@@ -81,7 +81,7 @@ static int16_t NAV_WrapTarget(int32_t target)
 
 static void NAV_ClearLineState(void)
 {
-    /* Clear only the debounce/arming state, not the visible pass counter. */
+    /* 只清除消抖/允许转向状态，不清除 OLED 上显示的计数。 */
     gLineStableCount = 0;
     gLostStableCount = 0;
     gLineTurnArmed = 0;
@@ -92,15 +92,15 @@ static uint8_t NAV_UpdateLinePassCounter(void)
     uint8_t now = Tracking_LineDetected ? 1U : 0U;
 
     /*
-     * Ignore line edges during a gyro turn. Otherwise the sensor can see the
-     * same line while rotating and count it again.
+     * 陀螺仪转向期间忽略灰度边沿。
+     * 否则转弯时传感器可能再次扫到同一条线，造成重复计数。
      */
     if (gMode == NAV_MODE_GYRO_TURN) {
         return 0U;
     }
 
     if (now != 0U) {
-        /* Require several consecutive line readings before arming a turn. */
+        /* 必须连续多次检测到线，才允许后续丢线触发转向。 */
         if (gLineStableCount < NAV_LINE_STABLE_CYCLES) {
             gLineStableCount++;
         }
@@ -115,7 +115,7 @@ static uint8_t NAV_UpdateLinePassCounter(void)
     gLineStableCount = 0;
 
     if (gLineTurnArmed == 0U) {
-        /* Starting on white ground does not count as losing a line. */
+        /* 如果一开始就在白地上，不算“丢线”。 */
         gLostStableCount = 0;
         return 0U;
     }
@@ -125,7 +125,7 @@ static uint8_t NAV_UpdateLinePassCounter(void)
     }
 
     if (gLostStableCount < NAV_LOST_STABLE_CYCLES) {
-        /* Require several consecutive no-line readings before counting. */
+        /* 必须连续多次没线，才真正计数。 */
         return 0U;
     }
 
@@ -143,7 +143,7 @@ static void NAV_LineFollowFromCurrentError(void)
     int16_t derivative = error - gLastControlError;
     int32_t correction;
 
-    /* PD controller: P follows position error, D damps sudden error changes. */
+    /* PD 控制：P 跟随位置误差，D 抑制误差突变。 */
     gLastControlError = error;
 
     correction = ((int32_t)error * TRACKING_KP_NUM) / TRACKING_KP_DEN;
@@ -161,7 +161,7 @@ static void NAV_LineFollowFromCurrentError(void)
 
 static void NAV_FinishTurn(void)
 {
-    /* After a fixed-angle turn, resume straight driving on white ground. */
+    /* 固定角度转完后，回到白地直行。 */
     gMode = NAV_MODE_FORWARD;
     NAV_ClearLineState();
     Tracking_Correction = 0;
@@ -170,7 +170,7 @@ static void NAV_FinishTurn(void)
 
 static uint8_t NAV_TurnTimeoutExpired(void)
 {
-    /* Safety: do not spin forever if gyro direction or wiring is wrong. */
+    /* 安全保护：陀螺仪方向或接线错误时，不允许一直原地转。 */
     if (gTurnStepCount < NAV_TURN_TIMEOUT_STEPS) {
         gTurnStepCount++;
     }
@@ -185,7 +185,7 @@ static uint8_t NAV_TurnTimeoutExpired(void)
 
 static void NAV_FallbackWhenGyroMissing(void)
 {
-    /* If gyro data is missing, keep the car usable instead of locking in turn. */
+    /* 如果陀螺仪没数据，不要卡死在转向状态，优先保持小车可控。 */
     if (Tracking_LineDetected != 0U) {
         gMode = NAV_MODE_LINE;
         NAV_LineFollowFromCurrentError();
@@ -208,7 +208,7 @@ static void NAV_StartTurnCdeg(int16_t angleCdeg, int8_t yawSign,
 {
     int16_t yaw = MS901M_GetYawCdeg();
 
-    /* Build an absolute target yaw from the current yaw and desired offset. */
+    /* 用当前 yaw 加上目标偏移量，得到绝对目标角度。 */
     gTargetYawCdeg = NAV_WrapTarget((int32_t)yaw +
         ((int32_t)yawSign * angleCdeg));
     gTurnLeftSpeed = leftSpeed;
@@ -226,7 +226,7 @@ static void NAV_StartLeftTurnCdeg(int16_t angleCdeg)
 
 static void NAV_StartTurnByLineCount(void)
 {
-    /* First counted line-loss: left. Second: right. Then repeat. */
+    /* 第 1 次丢线左转，第 2 次丢线右转，后面继续奇左偶右。 */
     if ((gLinePassCount & 1U) != 0U) {
         NAV_StartLeftTurnCdeg(NAV_TURN_45_CDEG);
     } else {
@@ -248,7 +248,7 @@ static void NAV_GyroTurnStep(void)
     int16_t yaw = MS901M_GetYawCdeg();
     int16_t error = MS901M_YawErrorCdeg(gTargetYawCdeg, yaw);
 
-    /* Stop turning once the target is reached within the tolerance window. */
+    /* 进入目标角度容差范围后，认为转向完成。 */
     if ((error > -NAV_TURN_DONE_CDEG) && (error < NAV_TURN_DONE_CDEG)) {
         NAV_FinishTurn();
         return;
@@ -259,7 +259,7 @@ static void NAV_GyroTurnStep(void)
 
 void NAV_Init(void)
 {
-    /* Start in safe forward mode; movement is commanded by NAV_ControlStep(). */
+    /* 初始进入安全的直行状态，真正动作由 NAV_ControlStep() 决定。 */
     gMode = NAV_MODE_FORWARD;
     gTargetYawCdeg = 0;
     gTurnLeftSpeed = NAV_RIGHT_LEFT_SPEED;
@@ -282,19 +282,19 @@ void NAV_ControlStep(void)
 {
     uint8_t lineLost;
 
-    /* Sensor processing happens before state decisions. */
+    /* 先刷新传感器，再根据结果切换状态。 */
     Tracking_Value_Acquire();
     Tracking_CalcError();
     lineLost = NAV_UpdateLinePassCounter();
 
-    /* Fixed-angle turn has the highest priority until it finishes or times out. */
+    /* 固定角度转向优先级最高，直到完成或超时。 */
     if (gMode == NAV_MODE_GYRO_TURN) {
         NAV_GyroTurnStep();
         return;
     }
 
     if (lineLost != 0U) {
-        /* A real line-leave event triggers the odd/even turn rule. */
+        /* 真实稳定的丢线事件，才触发奇偶转向规则。 */
         if (!MS901M_Available()) {
             NAV_FallbackWhenGyroMissing();
             return;
@@ -306,7 +306,7 @@ void NAV_ControlStep(void)
     }
 
     if (Tracking_LineDetected != 0U) {
-        /* Ordinary line-following branch. */
+        /* 普通巡线分支。 */
         gMode = NAV_MODE_LINE;
         NAV_LineFollowFromCurrentError();
         return;
@@ -316,7 +316,7 @@ void NAV_ControlStep(void)
     Tracking_Correction = 0;
     Motor_SetSpeed(NAV_FORWARD_SPEED, NAV_FORWARD_SPEED);
 
-    /* Keep D-term calm when re-entering line-follow mode later. */
+    /* 无线直行时同步误差，避免重新巡线时 D 项突然变大。 */
     gLastControlError = Tracking_Error;
 }
 

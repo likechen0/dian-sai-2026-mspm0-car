@@ -3,13 +3,13 @@
 
 #include <stdint.h>
 
-/* Software duty range: 10000 means 100.00%. */
+/* 软件占空比范围：10000 表示 100.00%。 */
 #define PWM_DUTY_MAX 10000U
 
-/* Start the timer and force both motor PWM channels to zero duty. */
+/* 启动 PWM 定时器，并把两路电机占空比置零。 */
 void PWM_Init(void);
 
-/* Set left/right motor PWM duty in the 0..PWM_DUTY_MAX range. */
+/* 设置左右电机 PWM，占空比范围为 0..PWM_DUTY_MAX。 */
 void PWM_SetDuty_L(uint16_t duty);
 void PWM_SetDuty_R(uint16_t duty);
 

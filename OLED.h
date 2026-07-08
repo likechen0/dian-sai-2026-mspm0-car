@@ -3,13 +3,13 @@
 
 #include <stdint.h>
 
-/* Initialize the SSD1306 OLED and clear the screen. */
+/* 初始化 SSD1306 OLED，并清屏。 */
 void OLED_Init(void);
 
-/* Clear all pixels. */
+/* 清空所有像素。 */
 void OLED_Clear(void);
 
-/* Display helpers use 1-based line/column coordinates: 4 lines x 16 columns. */
+/* 显示函数使用从 1 开始的行列坐标：4 行 x 16 列。 */
 void OLED_ShowChar(uint8_t Line, uint8_t Column, char Char);
 void OLED_ShowString(uint8_t Line, uint8_t Column, const char *String);
 void OLED_ShowNum(uint8_t Line, uint8_t Column, uint32_t Number, uint8_t Length);

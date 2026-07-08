@@ -3,10 +3,9 @@
 #include "ti_msp_dl_config.h"
 
 /*
- * LongQiu 8-channel grayscale tracking module.
- * The sensor board exposes one analog output (AS) and three select pins
- * (S0/S1/S2). This driver selects each channel, samples ADC, then computes
- * a weighted line-position error for the navigation state machine.
+ * 龙邱 8 路灰度循迹模块。
+ * 模块只有一个模拟输出 AS，靠 S0/S1/S2 选择当前读哪一路。
+ * 本驱动依次选择 8 路、读取 ADC，再计算加权循迹误差给导航状态机使用。
  */
 unsigned char LQ_Tracking_Value[TRACKING_CHANNEL_COUNT] = {0};
 volatile int16_t Tracking_Error = 0;
@@ -18,7 +17,7 @@ static int16_t Tracking_LastControlError = 0;
 
 static void Tracking_ShortDelay(void)
 {
-    /* Let the analog mux output settle after S0/S1/S2 changes. */
+    /* 切换 S0/S1/S2 后，给模拟多路选择器一点稳定时间。 */
     delay_cycles(CPUCLK_FREQ / 200000U);
 }
 
@@ -38,7 +37,7 @@ static uint16_t Tracking_GetLineStrength(uint8_t index)
     uint16_t value = LQ_Tracking_Value[index];
 
 #if !TRACKING_BLACK_IS_HIGH
-    /* Normalize so larger strength always means "more black line". */
+    /* 统一成“数值越大，越像黑线”。 */
     value = TRACKING_VALUE_MAX - value;
 #endif
 
@@ -56,7 +55,7 @@ void Tracking_Init(void)
 
 void Tracking_Adc_Init(void)
 {
-    /* Select channel 1 first and enable ADC conversions. */
+    /* 先选择第 1 路，并使能 ADC 转换。 */
     Tracking_IO_Set(0, 0, 0);
     DL_ADC12_enableConversions(ADC12_0_INST);
 }
@@ -66,7 +65,7 @@ void Tracking_IO_Set(unsigned char s2, unsigned char s1, unsigned char s0)
     uint32_t setPins = 0U;
     uint32_t clearPins = TRACKING_SEL_S0_PIN | TRACKING_SEL_S1_PIN | TRACKING_SEL_S2_PIN;
 
-    /* Convert the channel select bits into GPIO set/clear masks. */
+    /* 把通道选择位转换成 GPIO 置位/清零掩码。 */
     if (s0 != 0U) {
         setPins |= TRACKING_SEL_S0_PIN;
     }
@@ -88,7 +87,7 @@ uint16_t Tracking_Adc_once(void)
 {
     uint32_t timeout = 100000U;
 
-    /* Start one single ADC conversion and wait for MEM0 to be ready. */
+    /* 启动一次单次 ADC 转换，并等待 MEM0 结果就绪。 */
     DL_ADC12_clearInterruptStatus(ADC12_0_INST, DL_ADC12_INTERRUPT_MEM0_RESULT_LOADED);
     DL_ADC12_startConversion(ADC12_0_INST);
 
@@ -99,7 +98,7 @@ uint16_t Tracking_Adc_once(void)
     }
 
     if (timeout == 0U) {
-        /* Fail safe: keep ADC enabled and return a no-line-like value. */
+        /* 超时保护：保持 ADC 可用，并返回一个近似“没线”的值。 */
         DL_ADC12_enableConversions(ADC12_0_INST);
         return 0;
     }
@@ -118,8 +117,8 @@ unsigned int Tracking_Value_once(unsigned char ch)
     const uint8_t discardSamples = 3;
 
     /*
-     * For each channel, take several reads after selecting the mux channel.
-     * The first reads are discarded to reduce mux-settling noise.
+     * 每一路切换后读多次。
+     * 前几次丢弃，用来减小模拟多路选择器切换后的抖动。
      */
     for (i = 0; i < numSamples; i++) {
         switch (ch) {
@@ -134,7 +133,7 @@ unsigned int Tracking_Value_once(unsigned char ch)
             default: Tracking_IO_Set(0, 0, 0); break;
         }
 
-        /* Scale 12-bit ADC reading to the 0..100 range used by thresholds. */
+        /* 把 12 位 ADC 原始值缩放到 0..100，方便阈值判断。 */
         data = (uint16_t)(((uint32_t)Tracking_Adc_once() * TRACKING_VALUE_MAX) / 4095U);
         if (data > TRACKING_VALUE_MAX) {
             data = TRACKING_VALUE_MAX;
@@ -152,7 +151,7 @@ void Tracking_Value_Acquire(void)
 {
     uint8_t i;
 
-    /* Refresh the global 8-channel grayscale array. */
+    /* 刷新全局 8 路灰度数组。 */
     for (i = 0; i < TRACKING_CHANNEL_COUNT; i++) {
         LQ_Tracking_Value[i] = (unsigned char)Tracking_Value_once(i + 1U);
     }
@@ -161,8 +160,8 @@ void Tracking_Value_Acquire(void)
 int16_t Tracking_CalcError(void)
 {
     /*
-     * Negative weights are left sensors and positive weights are right sensors.
-     * The weighted average gives line position error around the center.
+     * 左侧传感器权重为负，右侧传感器权重为正。
+     * 加权平均后得到黑线相对中心的位置误差。
      */
     static const int16_t weight[TRACKING_CHANNEL_COUNT] = {
         -3500, -2500, -1500, -500, 500, 1500, 2500, 3500
@@ -179,7 +178,7 @@ int16_t Tracking_CalcError(void)
     }
 
     if (total == 0U) {
-        /* No line: keep last error so the next line reacquire has continuity. */
+        /* 没线时保留上次误差，这样重新看到线时不会突然跳变太大。 */
         Tracking_LineDetected = 0;
         Tracking_Error = Tracking_LastError;
         return Tracking_Error;
@@ -204,13 +203,13 @@ void Tracking_LineFollowStep(void)
     error = Tracking_CalcError();
 
     if (Tracking_LineDetected == 0U) {
-        /* Standalone helper behavior: stop if no line is visible. */
+        /* 这个独立测试函数的策略：没线就停车。 */
         Tracking_Correction = 0;
         Motor_Stop();
         return;
     }
 
-    /* This helper is kept for direct line-follow tests; NAV has its own copy. */
+    /* 这个函数保留给单独测试巡线用；当前主程序用 NAV 里的状态机。 */
     derivative = error - Tracking_LastControlError;
     Tracking_LastControlError = error;
 

@@ -5,18 +5,18 @@
 #include "InertialNav.h"
 
 /*
- * OLED display module.
- * Line 1: left wheel sampled speed.
- * Line 2: right wheel sampled speed.
- * Line 3: 8-channel grayscale digital state.
- * Line 4: tracking error and line-pass count.
+ * OLED 显示模块。
+ * 第 1 行：左轮编码器采样速度。
+ * 第 2 行：右轮编码器采样速度。
+ * 第 3 行：8 路灰度数字状态。
+ * 第 4 行：循迹误差和丢线计数。
  */
 static uint8_t Display_GetSensorBit(uint8_t index)
 {
     uint8_t value = LQ_Tracking_Value[index];
 
 #if !TRACKING_BLACK_IS_HIGH
-    /* Keep the displayed bit meaning stable: 1 means the line is detected. */
+    /* 保证显示含义固定：1 表示该路传感器检测到线。 */
     value = TRACKING_VALUE_MAX - value;
 #endif
 
@@ -28,7 +28,7 @@ static void Display_ShowSensorBits(void)
     char text[17];
     uint8_t i;
 
-    /* Format as S:xxxxxxxx where each x is one grayscale channel. */
+    /* 格式化成 S:xxxxxxxx，每个 x 对应一路灰度传感器。 */
     text[0] = 'S';
     text[1] = ':';
     for (i = 0; i < TRACKING_CHANNEL_COUNT; i++) {
@@ -47,7 +47,7 @@ void Display_Init(void)
     OLED_Init();
     OLED_Clear();
 
-    /* Draw fixed-width placeholders to reduce visible flicker later. */
+    /* 先画固定宽度模板，后续刷新时不容易闪烁和残影。 */
     OLED_ShowString(1, 1, "W1:+00000      ");
     OLED_ShowString(2, 1, "W2:+00000      ");
     OLED_ShowString(3, 1, "S:00000000     ");
@@ -58,7 +58,7 @@ void Display_Update(void)
 {
     static uint8_t divider = 0;
 
-    /* Updating the OLED every control loop is slow, so divide the rate. */
+    /* OLED 刷新较慢，所以这里做分频，不是每个控制周期都真正刷新。 */
     divider++;
     if (divider < DISPLAY_UPDATE_DIVIDER) {
         return;
@@ -75,7 +75,7 @@ void Display_Update(void)
 
     Display_ShowSensorBits();
 
-    /* E is line position error; C is the counted line-leave events. */
+    /* E 是循迹误差；C 是稳定“有线到没线”的计数。 */
     OLED_ShowString(4, 1, "E:");
     OLED_ShowSignedNum(4, 3, Tracking_Error, 4);
     OLED_ShowString(4, 8, " C:");
