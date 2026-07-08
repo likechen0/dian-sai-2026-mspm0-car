@@ -17,10 +17,10 @@
 #define TRACKING_LINE_THRESHOLD  30U
 
 /* 巡线基础速度和 PD 参数。 */
-#define TRACKING_BASE_SPEED      2500
-#define TRACKING_KP_NUM          48
+#define TRACKING_BASE_SPEED      2000
+#define TRACKING_KP_NUM          43
 #define TRACKING_KP_DEN          100
-#define TRACKING_KD_NUM          2
+#define TRACKING_KD_NUM          5
 #define TRACKING_KD_DEN          10
 
 /* 最近一次 8 路归一化灰度值，范围 0..TRACKING_VALUE_MAX。 */

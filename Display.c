@@ -44,18 +44,25 @@ static void Display_ShowGyro(void)
     uint8_t gyroOk = MS901M_Available() ? 1U : 0U;
 
     if (gyroOk == 0U) {
-        OLED_ShowString(3, 1, "RX:");
-        OLED_ShowNum(3, 4, MS901M_GetRxByteCount() % 10000U, 4);
-        OLED_ShowString(3, 8, " ID:");
-        OLED_ShowHexNum(3, 12, MS901M_GetLastFrameId(), 2);
-        OLED_ShowString(3, 14, "  ");
+        OLED_ShowString(3, 1, "RAW:");
+        OLED_ShowHexNum(3, 5, MS901M_GetRecentByte(0), 2);
+        OLED_ShowChar(3, 7, ' ');
+        OLED_ShowHexNum(3, 8, MS901M_GetRecentByte(1), 2);
+        OLED_ShowChar(3, 10, ' ');
+        OLED_ShowHexNum(3, 11, MS901M_GetRecentByte(2), 2);
+        OLED_ShowChar(3, 13, ' ');
+        OLED_ShowHexNum(3, 14, MS901M_GetRecentByte(3), 2);
+        OLED_ShowChar(3, 16, ' ');
 
-        OLED_ShowString(4, 1, "AF:");
-        OLED_ShowNum(4, 4, MS901M_GetAngleFrameCount(), 4);
-        OLED_ShowString(4, 8, " ER:");
+        OLED_ShowChar(4, 1, 'R');
+        OLED_ShowNum(4, 2, MS901M_GetRxByteCount() % 10000U, 4);
+        OLED_ShowString(4, 6, " I");
+        OLED_ShowHexNum(4, 8, MS901M_GetLastFrameId(), 2);
+        OLED_ShowString(4, 10, " E");
         OLED_ShowNum(4, 12, MS901M_GetLastErrorCode(), 1);
-        OLED_ShowString(4, 13, " BD:");
-        OLED_ShowNum(4, 16, MS901M_GetBadFrameCount() % 10U, 1);
+        OLED_ShowString(4, 13, " B");
+        OLED_ShowNum(4, 15, MS901M_GetBadFrameCount() % 10U, 1);
+        OLED_ShowChar(4, 16, ' ');
         return;
     }
 
@@ -79,8 +86,8 @@ void Display_Init(void)
 
     OLED_ShowString(1, 1, "W1:+00000      ");
     OLED_ShowString(2, 1, "W2:+00000      ");
-    OLED_ShowString(3, 1, "RX:0000 ID:00  ");
-    OLED_ShowString(4, 1, "AF:0000 ER:0BD:0");
+    OLED_ShowString(3, 1, "RAW:00 00 00 00 ");
+    OLED_ShowString(4, 1, "R0000 I00 E0 B0 ");
 }
 
 void Display_Update(void)

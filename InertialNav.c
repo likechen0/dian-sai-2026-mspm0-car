@@ -14,12 +14,14 @@
  *
  * 角度单位是 0.01 度：4500 表示 45.00 度。
  */
-#define NAV_FORWARD_SPEED       2500
+#define NAV_FORWARD_SPEED       2000
 #define NAV_TURN_45_CDEG        4500
 #define NAV_TURN_DONE_CDEG      250
 #define NAV_LINE_STABLE_CYCLES  5U
 #define NAV_LOST_STABLE_CYCLES  3U
 #define NAV_TURN_TIMEOUT_STEPS  200U
+/* Set to 1 to restore the odd/even 45-degree gyro turns after line loss. */
+#define NAV_ENABLE_LINE_TURN    1U
 
 #define NAV_LEFT_YAW_SIGN       (1)
 #define NAV_RIGHT_YAW_SIGN      (-1)
@@ -218,6 +220,7 @@ static void NAV_StartTurnCdeg(int16_t angleCdeg, int8_t yawSign,
     gMode = NAV_MODE_GYRO_TURN;
 }
 
+#if NAV_ENABLE_LINE_TURN
 static void NAV_StartLeftTurnCdeg(int16_t angleCdeg)
 {
     NAV_StartTurnCdeg(angleCdeg, NAV_LEFT_YAW_SIGN,
@@ -233,6 +236,7 @@ static void NAV_StartTurnByLineCount(void)
         NAV_StartRightTurnCdeg(NAV_TURN_45_CDEG);
     }
 }
+#endif
 
 static void NAV_GyroTurnStep(void)
 {
@@ -294,6 +298,7 @@ void NAV_ControlStep(void)
     }
 
     if (lineLost != 0U) {
+#if NAV_ENABLE_LINE_TURN
         /* 真实稳定的丢线事件，才触发奇偶转向规则。 */
         if (!MS901M_Available()) {
             NAV_FallbackWhenGyroMissing();
@@ -302,6 +307,12 @@ void NAV_ControlStep(void)
 
         NAV_StartTurnByLineCount();
         NAV_GyroTurnStep();
+#else
+        gMode = NAV_MODE_FORWARD;
+        Tracking_Correction = 0;
+        Motor_SetSpeed(NAV_FORWARD_SPEED, NAV_FORWARD_SPEED);
+        gLastControlError = Tracking_Error;
+#endif
         return;
     }
 
