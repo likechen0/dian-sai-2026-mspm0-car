@@ -98,7 +98,7 @@ void MS901M_PushByte(uint8_t byte)
     static uint8_t buffer[11];
     static uint8_t index = 0;
 
-    gRxByteCount = MS901M_CountUp(gRxByteCount);
+    gRxByteCount++;
 
     if (index == 0U) {
         if (byte == 0x55U) {
@@ -110,7 +110,9 @@ void MS901M_PushByte(uint8_t byte)
     buffer[index++] = byte;
 
     if (index == 2U) {
+        gLastFrameId = buffer[1];
         if ((buffer[1] < 0x51U) || (buffer[1] > 0x53U)) {
+            gBadFrameCount = MS901M_CountUp(gBadFrameCount);
             index = (byte == 0x55U) ? 1U : 0U;
             buffer[0] = 0x55U;
         }

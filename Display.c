@@ -42,7 +42,22 @@ static void Display_ShowSignedDeg(uint8_t line, uint8_t column, int16_t value)
 static void Display_ShowGyro(void)
 {
     uint8_t gyroOk = MS901M_Available() ? 1U : 0U;
-    uint16_t rxBeat = MS901M_GetRxByteCount() % 10U;
+
+    if (gyroOk == 0U) {
+        OLED_ShowString(3, 1, "RX:");
+        OLED_ShowNum(3, 4, MS901M_GetRxByteCount() % 10000U, 4);
+        OLED_ShowString(3, 8, " ID:");
+        OLED_ShowHexNum(3, 12, MS901M_GetLastFrameId(), 2);
+        OLED_ShowString(3, 14, "  ");
+
+        OLED_ShowString(4, 1, "AF:");
+        OLED_ShowNum(4, 4, MS901M_GetAngleFrameCount(), 4);
+        OLED_ShowString(4, 8, " ER:");
+        OLED_ShowNum(4, 12, MS901M_GetLastErrorCode(), 1);
+        OLED_ShowString(4, 13, " BD:");
+        OLED_ShowNum(4, 16, MS901M_GetBadFrameCount() % 10U, 1);
+        return;
+    }
 
     OLED_ShowString(3, 1, "Y:");
     Display_ShowSignedCdeg(3, 3, MS901M_GetYawCdeg());
@@ -54,8 +69,7 @@ static void Display_ShowGyro(void)
     Display_ShowSignedDeg(4, 3, MS901M_GetPitchCdeg());
     OLED_ShowString(4, 7, " R:");
     Display_ShowSignedDeg(4, 10, MS901M_GetRollCdeg());
-    OLED_ShowString(4, 14, "B:");
-    OLED_ShowNum(4, 16, rxBeat, 1);
+    OLED_ShowString(4, 14, "   ");
 }
 
 void Display_Init(void)
@@ -65,8 +79,8 @@ void Display_Init(void)
 
     OLED_ShowString(1, 1, "W1:+00000      ");
     OLED_ShowString(2, 1, "W2:+00000      ");
-    OLED_ShowString(3, 1, "Y:+000.00 OK:0 ");
-    OLED_ShowString(4, 1, "P:+000 R:+000B:0");
+    OLED_ShowString(3, 1, "RX:0000 ID:00  ");
+    OLED_ShowString(4, 1, "AF:0000 ER:0BD:0");
 }
 
 void Display_Update(void)
