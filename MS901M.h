@@ -16,6 +16,12 @@ bool MS901M_Available(void);
 /* 当前 yaw，单位为 0.01 度：4500 表示 45.00 度。 */
 int16_t MS901M_GetYawCdeg(void);
 
+/* 当前 roll，单位为 0.01 度。 */
+int16_t MS901M_GetRollCdeg(void);
+
+/* 当前 pitch，单位为 0.01 度。 */
+int16_t MS901M_GetPitchCdeg(void);
+
 /* 把当前 yaw 作为 0 度，供后续相对转向使用。 */
 void MS901M_SetYawZero(void);
 

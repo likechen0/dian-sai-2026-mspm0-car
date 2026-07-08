@@ -1,45 +1,59 @@
 #include "Display.h"
 #include "OLED.h"
 #include "Encoder.h"
-#include "Tracking.h"
-#include "InertialNav.h"
+#include "MS901M.h"
 
 /*
  * OLED 显示模块。
  * 第 1 行：左轮编码器采样速度。
  * 第 2 行：右轮编码器采样速度。
- * 第 3 行：8 路灰度数字状态。
- * 第 4 行：循迹误差和丢线计数。
+ * 第 3 行：MS901M yaw 航向角和数据有效状态。
+ * 第 4 行：MS901M pitch / roll 姿态角。
  */
-static uint8_t Display_GetSensorBit(uint8_t index)
+static uint16_t Display_AbsCdeg(int16_t value)
 {
-    uint8_t value = LQ_Tracking_Value[index];
+    int32_t temp = value;
 
-#if !TRACKING_BLACK_IS_HIGH
-    /* 保证显示含义固定：1 表示该路传感器检测到线。 */
-    value = TRACKING_VALUE_MAX - value;
-#endif
+    if (temp < 0) {
+        temp = -temp;
+    }
 
-    return (value >= TRACKING_LINE_THRESHOLD) ? 1U : 0U;
+    return (uint16_t)temp;
 }
 
-static void Display_ShowSensorBits(void)
+static void Display_ShowSignedCdeg(uint8_t line, uint8_t column, int16_t value)
 {
-    char text[17];
-    uint8_t i;
+    uint16_t absValue = Display_AbsCdeg(value);
 
-    /* 格式化成 S:xxxxxxxx，每个 x 对应一路灰度传感器。 */
-    text[0] = 'S';
-    text[1] = ':';
-    for (i = 0; i < TRACKING_CHANNEL_COUNT; i++) {
-        text[i + 2U] = Display_GetSensorBit(i) ? '1' : '0';
-    }
-    for (i = 10U; i < 16U; i++) {
-        text[i] = ' ';
-    }
-    text[16] = '\0';
+    OLED_ShowChar(line, column, (value < 0) ? '-' : '+');
+    OLED_ShowNum(line, column + 1U, absValue / 100U, 3);
+    OLED_ShowChar(line, column + 4U, '.');
+    OLED_ShowNum(line, column + 5U, absValue % 100U, 2);
+}
 
-    OLED_ShowString(3, 1, text);
+static void Display_ShowSignedDeg(uint8_t line, uint8_t column, int16_t value)
+{
+    uint16_t absValue = Display_AbsCdeg(value);
+
+    OLED_ShowChar(line, column, (value < 0) ? '-' : '+');
+    OLED_ShowNum(line, column + 1U, absValue / 100U, 3);
+}
+
+static void Display_ShowGyro(void)
+{
+    uint8_t gyroOk = MS901M_Available() ? 1U : 0U;
+
+    OLED_ShowString(3, 1, "Y:");
+    Display_ShowSignedCdeg(3, 3, MS901M_GetYawCdeg());
+    OLED_ShowString(3, 10, " OK:");
+    OLED_ShowNum(3, 14, gyroOk, 1);
+    OLED_ShowString(3, 15, "  ");
+
+    OLED_ShowString(4, 1, "P:");
+    Display_ShowSignedDeg(4, 3, MS901M_GetPitchCdeg());
+    OLED_ShowString(4, 7, " R:");
+    Display_ShowSignedDeg(4, 10, MS901M_GetRollCdeg());
+    OLED_ShowString(4, 14, "   ");
 }
 
 void Display_Init(void)
@@ -50,8 +64,8 @@ void Display_Init(void)
     /* 先画固定宽度模板，后续刷新时不容易闪烁和残影。 */
     OLED_ShowString(1, 1, "W1:+00000      ");
     OLED_ShowString(2, 1, "W2:+00000      ");
-    OLED_ShowString(3, 1, "S:00000000     ");
-    OLED_ShowString(4, 1, "E:+0000 C:0000 ");
+    OLED_ShowString(3, 1, "Y:+000.00 OK:0 ");
+    OLED_ShowString(4, 1, "P:+000 R:+000  ");
 }
 
 void Display_Update(void)
@@ -73,12 +87,5 @@ void Display_Update(void)
     OLED_ShowSignedNum(2, 4, Encoder_GetRightSpeed(), 5);
     OLED_ShowString(2, 10, "      ");
 
-    Display_ShowSensorBits();
-
-    /* E 是循迹误差；C 是稳定“有线到没线”的计数。 */
-    OLED_ShowString(4, 1, "E:");
-    OLED_ShowSignedNum(4, 3, Tracking_Error, 4);
-    OLED_ShowString(4, 8, " C:");
-    OLED_ShowNum(4, 11, NAV_GetLinePassCount(), 4);
-    OLED_ShowString(4, 15, "  ");
+    Display_ShowGyro();
 }

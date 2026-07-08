@@ -9,7 +9,7 @@
 /* 初始化外接 I2C OLED，并画固定显示模板。 */
 void Display_Init(void);
 
-/* 刷新轮速、灰度状态、循迹误差和计数。 */
+/* 刷新轮速和 MS901M 陀螺仪角度信息。 */
 void Display_Update(void);
 
 #endif

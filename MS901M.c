@@ -5,9 +5,11 @@
  * MS901M / 维特风格串口解析器。
  * 模块输出 11 字节一帧：
  *   0x55、帧 ID、8 字节数据、校验和。
- * 当前代码只处理角度帧 0x53，并从中提取 yaw 航向角。
+ * 当前代码只处理角度帧 0x53，并从中提取 roll / pitch / yaw 三个姿态角。
  */
 static volatile int16_t gYawRawCdeg;
+static volatile int16_t gRollCdeg;
+static volatile int16_t gPitchCdeg;
 static volatile int16_t gYawZeroCdeg;
 static volatile bool gAngleOk;
 
@@ -33,6 +35,8 @@ static int16_t MS901M_Wrap180(int32_t angle)
 void MS901M_Init(void)
 {
     gYawRawCdeg = 0;
+    gRollCdeg = 0;
+    gPitchCdeg = 0;
     gYawZeroCdeg = 0;
     gAngleOk = false;
 
@@ -67,9 +71,13 @@ void MS901M_PushByte(uint8_t byte)
         sum += buffer[i];
     }
 
-    /* 0x53 是角度帧，其中数据区第 6..7 字节是 yaw。 */
+    /* 0x53 是角度帧：2..3 是 roll，4..5 是 pitch，6..7 是 yaw。 */
     if ((sum == buffer[10]) && (buffer[1] == 0x53U)) {
+        int16_t rollRaw = MS901M_ToInt16(&buffer[2]);
+        int16_t pitchRaw = MS901M_ToInt16(&buffer[4]);
         int16_t yawRaw = MS901M_ToInt16(&buffer[6]);
+        gRollCdeg = (int16_t)(((int32_t)rollRaw * 18000) / 32768);
+        gPitchCdeg = (int16_t)(((int32_t)pitchRaw * 18000) / 32768);
         gYawRawCdeg = (int16_t)(((int32_t)yawRaw * 18000) / 32768);
         gAngleOk = true;
     }
@@ -87,6 +95,16 @@ int16_t MS901M_GetYawCdeg(void)
 {
     /* 返回相对于当前零点的 yaw。 */
     return MS901M_Wrap180((int32_t)gYawRawCdeg - gYawZeroCdeg);
+}
+
+int16_t MS901M_GetRollCdeg(void)
+{
+    return gRollCdeg;
+}
+
+int16_t MS901M_GetPitchCdeg(void)
+{
+    return gPitchCdeg;
 }
 
 void MS901M_SetYawZero(void)
