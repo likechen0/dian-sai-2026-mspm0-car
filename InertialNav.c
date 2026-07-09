@@ -14,21 +14,21 @@
  *
  * 角度单位是 0.01 度：4500 表示 45.00 度。
  */
-#define NAV_FORWARD_SPEED       2000
+#define NAV_FORWARD_SPEED       20
 #define NAV_TURN_45_CDEG        4500
 #define NAV_TURN_DONE_CDEG      250
 #define NAV_LINE_STABLE_CYCLES  5U
 #define NAV_LOST_STABLE_CYCLES  3U
 #define NAV_TURN_TIMEOUT_STEPS  200U
-/* Set to 1 to restore the odd/even 45-degree gyro turns after line loss. */
-#define NAV_ENABLE_LINE_TURN    1U
+/* 改成 1 可以恢复“丢线后奇数左转、偶数右转”的 45 度转弯。 */
+#define NAV_ENABLE_LINE_TURN    0U
 
 #define NAV_LEFT_YAW_SIGN       (1)
 #define NAV_RIGHT_YAW_SIGN      (-1)
-#define NAV_LEFT_LEFT_SPEED     (-1800)
-#define NAV_LEFT_RIGHT_SPEED    1800
-#define NAV_RIGHT_LEFT_SPEED    1800
-#define NAV_RIGHT_RIGHT_SPEED   (-1800)
+#define NAV_LEFT_LEFT_SPEED     (-18)
+#define NAV_LEFT_RIGHT_SPEED    18
+#define NAV_RIGHT_LEFT_SPEED    18
+#define NAV_RIGHT_RIGHT_SPEED   (-18)
 
 typedef enum {
     /* 有线状态：由 PD 修正控制左右轮。 */
@@ -56,13 +56,13 @@ static uint8_t gLineTurnArmed;
 static uint16_t gTurnStepCount;
 static uint16_t gLinePassCount;
 
-static int16_t NAV_LimitSpeed(int32_t speed)
+static int16_t NAV_LimitTargetSpeed(int32_t speed)
 {
-    if (speed > MOTOR_SPEED_MAX) {
-        return MOTOR_SPEED_MAX;
+    if (speed > MOTOR_TARGET_SPEED_MAX) {
+        return MOTOR_TARGET_SPEED_MAX;
     }
-    if (speed < -MOTOR_SPEED_MAX) {
-        return -MOTOR_SPEED_MAX;
+    if (speed < -MOTOR_TARGET_SPEED_MAX) {
+        return -MOTOR_TARGET_SPEED_MAX;
     }
 
     return (int16_t)speed;
@@ -151,14 +151,14 @@ static void NAV_LineFollowFromCurrentError(void)
     correction = ((int32_t)error * TRACKING_KP_NUM) / TRACKING_KP_DEN;
     correction += ((int32_t)derivative * TRACKING_KD_NUM) / TRACKING_KD_DEN;
 
-    Tracking_Correction = NAV_LimitSpeed(correction);
+    Tracking_Correction = NAV_LimitTargetSpeed(correction);
 
     int16_t leftSpeed =
-        NAV_LimitSpeed((int32_t)TRACKING_BASE_SPEED + Tracking_Correction);
+        NAV_LimitTargetSpeed((int32_t)TRACKING_BASE_SPEED + Tracking_Correction);
     int16_t rightSpeed =
-        NAV_LimitSpeed((int32_t)TRACKING_BASE_SPEED - Tracking_Correction);
+        NAV_LimitTargetSpeed((int32_t)TRACKING_BASE_SPEED - Tracking_Correction);
 
-    Motor_SetSpeed(leftSpeed, rightSpeed);
+    Motor_SetTargetSpeed(leftSpeed, rightSpeed);
 }
 
 static void NAV_FinishTurn(void)
@@ -167,7 +167,7 @@ static void NAV_FinishTurn(void)
     gMode = NAV_MODE_FORWARD;
     NAV_ClearLineState();
     Tracking_Correction = 0;
-    Motor_SetSpeed(NAV_FORWARD_SPEED, NAV_FORWARD_SPEED);
+    Motor_SetTargetSpeed(NAV_FORWARD_SPEED, NAV_FORWARD_SPEED);
 }
 
 static uint8_t NAV_TurnTimeoutExpired(void)
@@ -196,7 +196,7 @@ static void NAV_FallbackWhenGyroMissing(void)
 
     gMode = NAV_MODE_FORWARD;
     Tracking_Correction = 0;
-    Motor_SetSpeed(NAV_FORWARD_SPEED, NAV_FORWARD_SPEED);
+    Motor_SetTargetSpeed(NAV_FORWARD_SPEED, NAV_FORWARD_SPEED);
 }
 
 static void NAV_AbortTurnToCurrentMode(void)
@@ -258,7 +258,7 @@ static void NAV_GyroTurnStep(void)
         return;
     }
 
-    Motor_SetSpeed(gTurnLeftSpeed, gTurnRightSpeed);
+    Motor_SetTargetSpeed(gTurnLeftSpeed, gTurnRightSpeed);
 }
 
 void NAV_Init(void)
@@ -310,7 +310,7 @@ void NAV_ControlStep(void)
 #else
         gMode = NAV_MODE_FORWARD;
         Tracking_Correction = 0;
-        Motor_SetSpeed(NAV_FORWARD_SPEED, NAV_FORWARD_SPEED);
+        Motor_SetTargetSpeed(NAV_FORWARD_SPEED, NAV_FORWARD_SPEED);
         gLastControlError = Tracking_Error;
 #endif
         return;
@@ -325,7 +325,7 @@ void NAV_ControlStep(void)
 
     gMode = NAV_MODE_FORWARD;
     Tracking_Correction = 0;
-    Motor_SetSpeed(NAV_FORWARD_SPEED, NAV_FORWARD_SPEED);
+    Motor_SetTargetSpeed(NAV_FORWARD_SPEED, NAV_FORWARD_SPEED);
 
     /* 无线直行时同步误差，避免重新巡线时 D 项突然变大。 */
     gLastControlError = Tracking_Error;
