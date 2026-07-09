@@ -70,22 +70,6 @@ static int16_t Motor_CalcPwmBySpeedPI(int16_t target, int16_t measured,
     pwm += (error * MOTOR_SPEED_KP_NUM) / MOTOR_SPEED_KP_DEN;
     pwm += ((*integral) * MOTOR_SPEED_KI_NUM) / MOTOR_SPEED_KI_DEN;
 
-    /*
-     * 速度目标为正时，闭环只能把 PWM 降到 0，不能直接反向刹车。
-     * 否则悬空轮一旦超速，PI 会在正反之间来回抽动，表现成某一侧突然高速。
-     */
-    if ((target > 0) && (pwm < 0)) {
-        pwm = 0;
-        if (*integral < 0) {
-            *integral = 0;
-        }
-    } else if ((target < 0) && (pwm > 0)) {
-        pwm = 0;
-        if (*integral > 0) {
-            *integral = 0;
-        }
-    }
-
     return Motor_ClampSpeed(pwm);
 }
 
