@@ -30,9 +30,6 @@ int main(void)
         Delay_ms(ENCODER_SAMPLE_MS);
         Encoder_Update();
 
-        /* 速度内环：根据目标脉冲速度和编码器反馈，计算真正输出到 TB6612 的 PWM。 */
-        Motor_SpeedControlUpdate();
-
         /* OLED 内部做了分频刷新，所以主循环里每次调用也没问题。 */
         Display_Update();
 

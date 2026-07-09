@@ -23,11 +23,11 @@ static void Tracking_ShortDelay(void)
 
 static int16_t Tracking_LimitSpeed(int32_t speed)
 {
-    if (speed > MOTOR_TARGET_SPEED_MAX) {
-        return MOTOR_TARGET_SPEED_MAX;
+    if (speed > MOTOR_SPEED_MAX) {
+        return MOTOR_SPEED_MAX;
     }
-    if (speed < -MOTOR_TARGET_SPEED_MAX) {
-        return -MOTOR_TARGET_SPEED_MAX;
+    if (speed < -MOTOR_SPEED_MAX) {
+        return -MOTOR_SPEED_MAX;
     }
     return (int16_t)speed;
 }
@@ -205,7 +205,7 @@ void Tracking_LineFollowStep(void)
     if (Tracking_LineDetected == 0U) {
         /* 这个独立测试函数的策略：没线就停车。 */
         Tracking_Correction = 0;
-        Motor_SpeedControlReset();
+        Motor_Stop();
         return;
     }
 
@@ -221,5 +221,5 @@ void Tracking_LineFollowStep(void)
     leftSpeed = Tracking_LimitSpeed((int32_t)TRACKING_BASE_SPEED + Tracking_Correction);
     rightSpeed = Tracking_LimitSpeed((int32_t)TRACKING_BASE_SPEED - Tracking_Correction);
 
-    Motor_SetTargetSpeed(leftSpeed, rightSpeed);
+    Motor_SetSpeed(leftSpeed, rightSpeed);
 }

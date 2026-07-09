@@ -16,12 +16,12 @@
 /* 归一化值超过该阈值，就认为这一通道检测到线。 */
 #define TRACKING_LINE_THRESHOLD  30U
 
-/* 巡线基础目标速度和 PD 参数，速度单位是每 10ms 编码器脉冲数。 */
-#define TRACKING_BASE_SPEED      20
+/* 巡线基础 PWM 和 PD 参数。 */
+#define TRACKING_BASE_SPEED      2000
 #define TRACKING_KP_NUM          43
-#define TRACKING_KP_DEN          10000
+#define TRACKING_KP_DEN          100
 #define TRACKING_KD_NUM          5
-#define TRACKING_KD_DEN          1000
+#define TRACKING_KD_DEN          10
 
 /* 最近一次 8 路归一化灰度值，范围 0..TRACKING_VALUE_MAX。 */
 extern unsigned char LQ_Tracking_Value[TRACKING_CHANNEL_COUNT];
