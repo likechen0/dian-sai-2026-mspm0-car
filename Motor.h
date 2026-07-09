@@ -14,13 +14,13 @@
  * 前馈项让 target=20 时大约输出 2000 PWM，接近原来的开环基础速度。
  * KP/KI 后续按实车情况微调：抖动就减小，跟不住就增大。
  */
-#define MOTOR_SPEED_FF_NUM 100
+#define MOTOR_SPEED_FF_NUM 60
 #define MOTOR_SPEED_FF_DEN 1
-#define MOTOR_SPEED_KP_NUM 80
+#define MOTOR_SPEED_KP_NUM 50
 #define MOTOR_SPEED_KP_DEN 1
-#define MOTOR_SPEED_KI_NUM 4
+#define MOTOR_SPEED_KI_NUM 2
 #define MOTOR_SPEED_KI_DEN 1
-#define MOTOR_SPEED_INTEGRAL_LIMIT 500
+#define MOTOR_SPEED_INTEGRAL_LIMIT 400
 
 /* 初始化 PWM，并使能 TB6612。 */
 void Motor_Init(void);
