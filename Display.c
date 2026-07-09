@@ -2,6 +2,9 @@
 #include "OLED.h"
 #include "Encoder.h"
 #include "MS901M.h"
+#include "Motor.h"
+
+#define DISPLAY_SHOW_MOTOR_DEBUG 1U
 
 /*
  * OLED display:
@@ -10,6 +13,7 @@
  * Line 3: MS901M yaw and valid-angle-frame state.
  * Line 4: MS901M pitch, roll, and UART byte heartbeat.
  */
+#if !DISPLAY_SHOW_MOTOR_DEBUG
 static uint16_t Display_AbsCdeg(int16_t value)
 {
     int32_t temp = value;
@@ -78,6 +82,22 @@ static void Display_ShowGyro(void)
     Display_ShowSignedDeg(4, 10, MS901M_GetRollCdeg());
     OLED_ShowString(4, 14, "   ");
 }
+#endif
+
+static void Display_ShowMotorDebug(void)
+{
+    OLED_ShowString(3, 1, "T:");
+    OLED_ShowSignedNum(3, 3, Motor_GetLeftTargetSpeed(), 3);
+    OLED_ShowChar(3, 7, ' ');
+    OLED_ShowSignedNum(3, 8, Motor_GetRightTargetSpeed(), 3);
+    OLED_ShowString(3, 12, "     ");
+
+    OLED_ShowString(4, 1, "P:");
+    OLED_ShowSignedNum(4, 3, Motor_GetLeftPwmOutput(), 4);
+    OLED_ShowChar(4, 8, ' ');
+    OLED_ShowSignedNum(4, 9, Motor_GetRightPwmOutput(), 4);
+    OLED_ShowString(4, 14, "   ");
+}
 
 void Display_Init(void)
 {
@@ -86,8 +106,13 @@ void Display_Init(void)
 
     OLED_ShowString(1, 1, "W1:+00000      ");
     OLED_ShowString(2, 1, "W2:+00000      ");
+#if DISPLAY_SHOW_MOTOR_DEBUG
+    OLED_ShowString(3, 1, "T:+000 +000     ");
+    OLED_ShowString(4, 1, "P:+0000 +0000   ");
+#else
     OLED_ShowString(3, 1, "RAW:00 00 00 00 ");
     OLED_ShowString(4, 1, "R0000 I00 E0 B0 ");
+#endif
 }
 
 void Display_Update(void)
@@ -108,5 +133,9 @@ void Display_Update(void)
     OLED_ShowSignedNum(2, 4, Encoder_GetRightSpeed(), 5);
     OLED_ShowString(2, 10, "      ");
 
+#if DISPLAY_SHOW_MOTOR_DEBUG
+    Display_ShowMotorDebug();
+#else
     Display_ShowGyro();
+#endif
 }
