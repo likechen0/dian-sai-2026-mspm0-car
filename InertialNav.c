@@ -23,9 +23,8 @@
 /* 改成 1 可以恢复“丢线后奇数左转、偶数右转”的 45 度转弯。 */
 #define NAV_ENABLE_LINE_TURN    0U
 
-#define NAV_OUTER_LEFT_MASK     ((uint8_t)((1U << 0) | (1U << 1)))
-#define NAV_OUTER_RIGHT_MASK    ((uint8_t)((1U << 6) | (1U << 7)))
-#define NAV_MIDDLE_MASK         ((uint8_t)((1U << 2) | (1U << 3) | (1U << 4) | (1U << 5)))
+#define NAV_OUTER_LEFT_MASK     ((uint8_t)(1U << 0))
+#define NAV_OUTER_RIGHT_MASK    ((uint8_t)(1U << 7))
 
 #define NAV_LOST_SEARCH_ENABLE          1U
 #define NAV_LOST_SEARCH_LEFT_SIDE       (-1)
@@ -61,6 +60,7 @@ static int16_t gTurnLeftSpeed;
 static int16_t gTurnRightSpeed;
 static int16_t gLastControlError;
 static int8_t gLastOuterLineSide;
+static int8_t gSearchOuterLineSide;
 
 /* “有线 -> 没线”事件的消抖状态。 */
 static uint8_t gLineStableCount;
@@ -113,6 +113,11 @@ static void NAV_ClearLineState(void)
     gLineStableCount = 0;
     gLostStableCount = 0;
     gLineTurnArmed = 0;
+}
+
+static void NAV_ClearLostSearchState(void)
+{
+    gSearchOuterLineSide = 0;
 }
 
 static uint8_t NAV_UpdateLinePassCounter(void)
@@ -198,16 +203,21 @@ static void NAV_LineFollowFromCurrentError(void)
 static void NAV_UpdateLastOuterLineSide(void)
 {
     uint8_t mask = Tracking_GetLineMask();
+    uint8_t leftOuter;
+    uint8_t rightOuter;
 
     if (mask == 0U) {
         return;
     }
 
-    if ((mask & (uint8_t)~NAV_OUTER_LEFT_MASK) == 0U) {
+    leftOuter = ((mask & NAV_OUTER_LEFT_MASK) != 0U) ? 1U : 0U;
+    rightOuter = ((mask & NAV_OUTER_RIGHT_MASK) != 0U) ? 1U : 0U;
+
+    if ((leftOuter != 0U) && (rightOuter == 0U)) {
         gLastOuterLineSide = NAV_LOST_SEARCH_LEFT_SIDE;
-    } else if ((mask & (uint8_t)~NAV_OUTER_RIGHT_MASK) == 0U) {
+    } else if ((rightOuter != 0U) && (leftOuter == 0U)) {
         gLastOuterLineSide = NAV_LOST_SEARCH_RIGHT_SIDE;
-    } else if ((mask & NAV_MIDDLE_MASK) != 0U) {
+    } else {
         gLastOuterLineSide = 0;
     }
 }
@@ -220,13 +230,18 @@ static void NAV_LostSearchStep(void)
 
     if (Tracking_LineDetected != 0U) {
         gMode = NAV_MODE_LINE;
+        NAV_ClearLostSearchState();
         NAV_UpdateLastOuterLineSide();
         gLastControlError = Tracking_Error;
         NAV_LineFollowFromCurrentError();
         return;
     }
 
-    if (gLastOuterLineSide == 0) {
+    if (gSearchOuterLineSide == 0) {
+        gSearchOuterLineSide = gLastOuterLineSide;
+    }
+
+    if (gSearchOuterLineSide == 0) {
         gMode = NAV_MODE_FORWARD;
         Tracking_Correction = 0;
         Motor_SetSpeed(NAV_FORWARD_SPEED, NAV_FORWARD_SPEED);
@@ -235,7 +250,7 @@ static void NAV_LostSearchStep(void)
     }
 
     gMode = NAV_MODE_LOST_SEARCH;
-    turn = (int16_t)((int32_t)gLastOuterLineSide * NAV_LOST_SEARCH_TURN_SPEED);
+    turn = (int16_t)((int32_t)gSearchOuterLineSide * NAV_LOST_SEARCH_TURN_SPEED);
     leftSpeed = NAV_LimitSpeed((int32_t)NAV_LOST_SEARCH_FORWARD_SPEED + turn);
     rightSpeed = NAV_LimitSpeed((int32_t)NAV_LOST_SEARCH_FORWARD_SPEED - turn);
     Tracking_Correction = turn;
@@ -351,6 +366,7 @@ void NAV_Init(void)
     gTurnRightSpeed = NAV_RIGHT_RIGHT_SPEED;
     gLastControlError = 0;
     gLastOuterLineSide = 0;
+    gSearchOuterLineSide = 0;
     gTurnStepCount = 0;
     gLinePassCount = 0;
     NAV_ClearLineState();
