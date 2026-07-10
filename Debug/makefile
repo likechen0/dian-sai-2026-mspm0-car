@@ -125,20 +125,20 @@ endif
 
 # Add inputs and outputs from these tool invocations to the build variables 
 EXE_OUTPUTS += \
-empty.out 
+chuanyv.out 
 
 EXE_OUTPUTS__QUOTED += \
-"empty.out" 
+"chuanyv.out" 
 
 
 # All Target
 all: $(OBJS) $(GEN_CMDS)
-	@$(MAKE) --no-print-directory -Onone "empty.out"
+	@$(MAKE) --no-print-directory -Onone "chuanyv.out"
 
 # Tool invocations
-empty.out: $(OBJS) $(GEN_CMDS)
+chuanyv.out: $(OBJS) $(GEN_CMDS)
 	@echo 'Arm Linker - building target: "$@"'
-	"D:/ti/ccs2100/ccs/tools/compiler/ti-cgt-armllvm_5.1.1.LTS/bin/tiarmclang.exe" @"device.opt"  -march=thumbv6m -mcpu=cortex-m0plus -mfloat-abi=soft -mlittle-endian -mthumb -O2 -gdwarf-3 -Wall -Wl,-m"empty.map" -Wl,-i"C:/TI/mspm0_sdk_2_10_00_04/source" -Wl,-i"C:/Users/Lenovo/workspace_ccstheia/empty" -Wl,-i"C:/Users/Lenovo/workspace_ccstheia/empty/Debug/syscfg" -Wl,-i"D:/ti/ccs2100/ccs/tools/compiler/ti-cgt-armllvm_5.1.1.LTS/lib" -Wl,--diag_wrap=off -Wl,--display_error_number -Wl,--warn_sections -Wl,--xml_link_info="empty_linkInfo.xml" -Wl,--rom_model -o "empty.out" $(ORDERED_OBJS)
+	"D:/ti/ccs2100/ccs/tools/compiler/ti-cgt-armllvm_5.1.1.LTS/bin/tiarmclang.exe" @"device.opt"  -march=thumbv6m -mcpu=cortex-m0plus -mfloat-abi=soft -mlittle-endian -mthumb -O2 -gdwarf-3 -Wall -Wl,-m"chuanyv.map" -Wl,-i"C:/TI/mspm0_sdk_2_10_00_04/source" -Wl,-i"C:/Users/Lenovo/workspace_ccstheia/chuanyv" -Wl,-i"C:/Users/Lenovo/workspace_ccstheia/chuanyv/Debug/syscfg" -Wl,-i"D:/ti/ccs2100/ccs/tools/compiler/ti-cgt-armllvm_5.1.1.LTS/lib" -Wl,--diag_wrap=off -Wl,--display_error_number -Wl,--warn_sections -Wl,--xml_link_info="chuanyv_linkInfo.xml" -Wl,--rom_model -o "chuanyv.out" $(ORDERED_OBJS)
 	@echo 'Finished building target: "$@"'
 	@echo ' '
 

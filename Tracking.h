@@ -53,6 +53,8 @@ void Tracking_Value_Acquire(void);
 
 /* 计算是否有线，以及加权循迹误差。 */
 int16_t Tracking_CalcError(void);
+uint8_t Tracking_IsSensorOnLine(uint8_t channel);
+uint8_t Tracking_GetLineMask(void);
 
 /* 独立巡线测试函数；当前主导航状态机不直接使用它。 */
 void Tracking_LineFollowStep(void);

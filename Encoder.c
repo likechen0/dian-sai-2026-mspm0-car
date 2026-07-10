@@ -1,4 +1,5 @@
 #include "Encoder.h"
+#include "MS901M.h"
 #include "ti_msp_dl_config.h"
 
 /*
@@ -12,6 +13,16 @@ volatile int16_t Encoder_RightSpeed;
 /* 中断里累加的脉冲数，Encoder_Update() 读取后会清零。 */
 static volatile int32_t gEncoderLeftCount;
 static volatile int32_t gEncoderRightCount;
+static int32_t gEncoderLeftTotal;
+static int32_t gEncoderRightTotal;
+static int32_t gOdomXmm;
+static int32_t gOdomYmm;
+static int16_t gOdomYawCdeg;
+
+static const int16_t gSin0To90Deg1000[] = {
+    0, 87, 174, 259, 342, 423, 500, 574, 643, 707,
+    766, 819, 866, 906, 940, 966, 985, 996, 1000
+};
 
 static int32_t Encoder_ClampToInt16(int32_t value)
 {
@@ -22,6 +33,65 @@ static int32_t Encoder_ClampToInt16(int32_t value)
         return -32768;
     }
     return value;
+}
+
+static int16_t Encoder_Sin0To90Cdeg1000(int32_t angleCdeg)
+{
+    int32_t index = angleCdeg / 500;
+    int32_t remain = angleCdeg % 500;
+    int32_t base;
+    int32_t next;
+
+    if (index >= 18) {
+        return 1000;
+    }
+
+    base = gSin0To90Deg1000[index];
+    next = gSin0To90Deg1000[index + 1];
+    return (int16_t)(base + ((next - base) * remain) / 500);
+}
+
+static int16_t Encoder_SinCdeg1000(int32_t angleCdeg)
+{
+    while (angleCdeg < 0) {
+        angleCdeg += 36000;
+    }
+    while (angleCdeg >= 36000) {
+        angleCdeg -= 36000;
+    }
+
+    if (angleCdeg <= 9000) {
+        return Encoder_Sin0To90Cdeg1000(angleCdeg);
+    }
+    if (angleCdeg <= 18000) {
+        return Encoder_Sin0To90Cdeg1000(18000 - angleCdeg);
+    }
+    if (angleCdeg <= 27000) {
+        return (int16_t)-Encoder_Sin0To90Cdeg1000(angleCdeg - 18000);
+    }
+    return (int16_t)-Encoder_Sin0To90Cdeg1000(36000 - angleCdeg);
+}
+
+static int16_t Encoder_CosCdeg1000(int32_t angleCdeg)
+{
+    return Encoder_SinCdeg1000(9000 - angleCdeg);
+}
+
+static void Encoder_UpdateOdometry(int16_t leftCount, int16_t rightCount)
+{
+    int32_t averageCount = ((int32_t)leftCount + rightCount) / 2;
+    int32_t distanceMm =
+        (averageCount * ENCODER_MM_PER_COUNT_NUM) / ENCODER_MM_PER_COUNT_DEN;
+
+    gEncoderLeftTotal += leftCount;
+    gEncoderRightTotal += rightCount;
+
+    if (MS901M_Available()) {
+        gOdomYawCdeg = MS901M_GetYawCdeg();
+    }
+
+    gOdomXmm += (distanceMm * Encoder_CosCdeg1000(gOdomYawCdeg)) / 1000;
+    gOdomYmm += (distanceMm * Encoder_SinCdeg1000(gOdomYawCdeg)) / 1000;
 }
 
 static void Encoder_HandleLeftEdge(void)
@@ -56,6 +126,7 @@ void Encoder_Init(void)
     gEncoderRightCount = 0;
     Encoder_LeftSpeed = 0;
     Encoder_RightSpeed = 0;
+    Encoder_ResetOdometry();
 
     /* 使能两个编码器 A 相所在 GPIO 组中断。 */
     DL_GPIO_clearInterruptStatus(ENCODER_PORTB_PORT,
@@ -81,6 +152,7 @@ void Encoder_Update(void)
 
     Encoder_LeftSpeed = (int16_t)Encoder_ClampToInt16(left);
     Encoder_RightSpeed = (int16_t)Encoder_ClampToInt16(right);
+    Encoder_UpdateOdometry(Encoder_LeftSpeed, Encoder_RightSpeed);
 }
 
 int16_t Encoder_GetLeftSpeed(void)
@@ -91,6 +163,40 @@ int16_t Encoder_GetLeftSpeed(void)
 int16_t Encoder_GetRightSpeed(void)
 {
     return Encoder_RightSpeed;
+}
+
+int32_t Encoder_GetLeftTotalCount(void)
+{
+    return gEncoderLeftTotal;
+}
+
+int32_t Encoder_GetRightTotalCount(void)
+{
+    return gEncoderRightTotal;
+}
+
+int32_t Encoder_GetXmm(void)
+{
+    return gOdomXmm;
+}
+
+int32_t Encoder_GetYmm(void)
+{
+    return gOdomYmm;
+}
+
+int16_t Encoder_GetPoseYawCdeg(void)
+{
+    return gOdomYawCdeg;
+}
+
+void Encoder_ResetOdometry(void)
+{
+    gEncoderLeftTotal = 0;
+    gEncoderRightTotal = 0;
+    gOdomXmm = 0;
+    gOdomYmm = 0;
+    gOdomYawCdeg = 0;
 }
 
 int32_t Encoder_CountToRPM(int16_t count, uint16_t sampleMs, uint16_t countsPerRev)

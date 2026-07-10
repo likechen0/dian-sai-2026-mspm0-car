@@ -48,6 +48,29 @@ static uint16_t Tracking_GetLineStrength(uint8_t index)
     return value - TRACKING_LINE_THRESHOLD;
 }
 
+uint8_t Tracking_IsSensorOnLine(uint8_t channel)
+{
+    if ((channel < 1U) || (channel > TRACKING_CHANNEL_COUNT)) {
+        return 0U;
+    }
+
+    return (Tracking_GetLineStrength(channel - 1U) > 0U) ? 1U : 0U;
+}
+
+uint8_t Tracking_GetLineMask(void)
+{
+    uint8_t i;
+    uint8_t mask = 0U;
+
+    for (i = 0U; i < TRACKING_CHANNEL_COUNT; i++) {
+        if (Tracking_GetLineStrength(i) > 0U) {
+            mask |= (uint8_t)(1U << i);
+        }
+    }
+
+    return mask;
+}
+
 void Tracking_Init(void)
 {
     Tracking_Adc_Init();

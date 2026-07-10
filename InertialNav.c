@@ -23,6 +23,19 @@
 /* 改成 1 可以恢复“丢线后奇数左转、偶数右转”的 45 度转弯。 */
 #define NAV_ENABLE_LINE_TURN    0U
 
+#define NAV_OUTER_LEFT_MASK     ((uint8_t)((1U << 0) | (1U << 1)))
+#define NAV_OUTER_RIGHT_MASK    ((uint8_t)((1U << 6) | (1U << 7)))
+#define NAV_MIDDLE_MASK         ((uint8_t)((1U << 2) | (1U << 3) | (1U << 4) | (1U << 5)))
+
+#define NAV_LOST_SEARCH_ENABLE          1U
+#define NAV_LOST_SEARCH_LEFT_SIDE       (-1)
+#define NAV_LOST_SEARCH_RIGHT_SIDE      1
+#define NAV_LOST_SEARCH_FORWARD_SPEED   200
+#define NAV_LOST_SEARCH_TURN_SPEED      900
+
+#define NAV_TRACK_MIN_SPEED             1200
+#define NAV_TRACK_SLOWDOWN_DEN          4
+
 #define NAV_LEFT_YAW_SIGN       (1)
 #define NAV_RIGHT_YAW_SIGN      (-1)
 #define NAV_LEFT_LEFT_SPEED     (-1800)
@@ -36,6 +49,7 @@ typedef enum {
 
     /* 无线状态：两轮同速，白地直行。 */
     NAV_MODE_FORWARD,
+    NAV_MODE_LOST_SEARCH,
 
     /* 陀螺仪转向状态：原地固定角度转弯。 */
     NAV_MODE_GYRO_TURN
@@ -46,6 +60,7 @@ static int16_t gTargetYawCdeg;
 static int16_t gTurnLeftSpeed;
 static int16_t gTurnRightSpeed;
 static int16_t gLastControlError;
+static int8_t gLastOuterLineSide;
 
 /* “有线 -> 没线”事件的消抖状态。 */
 static uint8_t gLineStableCount;
@@ -66,6 +81,17 @@ static int16_t NAV_LimitSpeed(int32_t speed)
     }
 
     return (int16_t)speed;
+}
+
+static uint16_t NAV_Abs16(int16_t value)
+{
+    int32_t temp = value;
+
+    if (temp < 0) {
+        temp = -temp;
+    }
+
+    return (uint16_t)temp;
 }
 
 static int16_t NAV_WrapTarget(int32_t target)
@@ -97,7 +123,8 @@ static uint8_t NAV_UpdateLinePassCounter(void)
      * 陀螺仪转向期间忽略灰度边沿。
      * 否则转弯时传感器可能再次扫到同一条线，造成重复计数。
      */
-    if (gMode == NAV_MODE_GYRO_TURN) {
+    if ((gMode == NAV_MODE_GYRO_TURN) ||
+        (gMode == NAV_MODE_LOST_SEARCH)) {
         return 0U;
     }
 
@@ -144,6 +171,7 @@ static void NAV_LineFollowFromCurrentError(void)
     int16_t error = Tracking_Error;
     int16_t derivative = error - gLastControlError;
     int32_t correction;
+    int16_t baseSpeed;
 
     /* PD 控制：P 跟随位置误差，D 抑制误差突变。 */
     gLastControlError = error;
@@ -152,12 +180,65 @@ static void NAV_LineFollowFromCurrentError(void)
     correction += ((int32_t)derivative * TRACKING_KD_NUM) / TRACKING_KD_DEN;
 
     Tracking_Correction = NAV_LimitSpeed(correction);
+    baseSpeed = NAV_LimitSpeed(
+        (int32_t)TRACKING_BASE_SPEED -
+        ((int32_t)NAV_Abs16(error) / NAV_TRACK_SLOWDOWN_DEN));
+    if (baseSpeed < NAV_TRACK_MIN_SPEED) {
+        baseSpeed = NAV_TRACK_MIN_SPEED;
+    }
 
     int16_t leftSpeed =
-        NAV_LimitSpeed((int32_t)TRACKING_BASE_SPEED + Tracking_Correction);
+        NAV_LimitSpeed((int32_t)baseSpeed + Tracking_Correction);
     int16_t rightSpeed =
-        NAV_LimitSpeed((int32_t)TRACKING_BASE_SPEED - Tracking_Correction);
+        NAV_LimitSpeed((int32_t)baseSpeed - Tracking_Correction);
 
+    Motor_SetSpeed(leftSpeed, rightSpeed);
+}
+
+static void NAV_UpdateLastOuterLineSide(void)
+{
+    uint8_t mask = Tracking_GetLineMask();
+
+    if (mask == 0U) {
+        return;
+    }
+
+    if ((mask & (uint8_t)~NAV_OUTER_LEFT_MASK) == 0U) {
+        gLastOuterLineSide = NAV_LOST_SEARCH_LEFT_SIDE;
+    } else if ((mask & (uint8_t)~NAV_OUTER_RIGHT_MASK) == 0U) {
+        gLastOuterLineSide = NAV_LOST_SEARCH_RIGHT_SIDE;
+    } else if ((mask & NAV_MIDDLE_MASK) != 0U) {
+        gLastOuterLineSide = 0;
+    }
+}
+
+static void NAV_LostSearchStep(void)
+{
+    int16_t turn;
+    int16_t leftSpeed;
+    int16_t rightSpeed;
+
+    if (Tracking_LineDetected != 0U) {
+        gMode = NAV_MODE_LINE;
+        NAV_UpdateLastOuterLineSide();
+        gLastControlError = Tracking_Error;
+        NAV_LineFollowFromCurrentError();
+        return;
+    }
+
+    if (gLastOuterLineSide == 0) {
+        gMode = NAV_MODE_FORWARD;
+        Tracking_Correction = 0;
+        Motor_SetSpeed(NAV_FORWARD_SPEED, NAV_FORWARD_SPEED);
+        gLastControlError = Tracking_Error;
+        return;
+    }
+
+    gMode = NAV_MODE_LOST_SEARCH;
+    turn = (int16_t)((int32_t)gLastOuterLineSide * NAV_LOST_SEARCH_TURN_SPEED);
+    leftSpeed = NAV_LimitSpeed((int32_t)NAV_LOST_SEARCH_FORWARD_SPEED + turn);
+    rightSpeed = NAV_LimitSpeed((int32_t)NAV_LOST_SEARCH_FORWARD_SPEED - turn);
+    Tracking_Correction = turn;
     Motor_SetSpeed(leftSpeed, rightSpeed);
 }
 
@@ -269,6 +350,7 @@ void NAV_Init(void)
     gTurnLeftSpeed = NAV_RIGHT_LEFT_SPEED;
     gTurnRightSpeed = NAV_RIGHT_RIGHT_SPEED;
     gLastControlError = 0;
+    gLastOuterLineSide = 0;
     gTurnStepCount = 0;
     gLinePassCount = 0;
     NAV_ClearLineState();
@@ -289,6 +371,7 @@ void NAV_ControlStep(void)
     /* 先刷新传感器，再根据结果切换状态。 */
     Tracking_Value_Acquire();
     Tracking_CalcError();
+    NAV_UpdateLastOuterLineSide();
     lineLost = NAV_UpdateLinePassCounter();
 
     /* 固定角度转向优先级最高，直到完成或超时。 */
@@ -296,6 +379,18 @@ void NAV_ControlStep(void)
         NAV_GyroTurnStep();
         return;
     }
+
+#if NAV_LOST_SEARCH_ENABLE
+    if (gMode == NAV_MODE_LOST_SEARCH) {
+        NAV_LostSearchStep();
+        return;
+    }
+
+    if ((Tracking_LineDetected == 0U) && (gLastOuterLineSide != 0)) {
+        NAV_LostSearchStep();
+        return;
+    }
+#endif
 
     if (lineLost != 0U) {
 #if NAV_ENABLE_LINE_TURN
@@ -338,5 +433,6 @@ uint16_t NAV_GetLinePassCount(void)
 
 uint8_t NAV_IsTurning(void)
 {
-    return (gMode == NAV_MODE_GYRO_TURN) ? 1U : 0U;
+    return ((gMode == NAV_MODE_GYRO_TURN) ||
+            (gMode == NAV_MODE_LOST_SEARCH)) ? 1U : 0U;
 }

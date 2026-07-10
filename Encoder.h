@@ -10,6 +10,9 @@
 #define ENCODER_LEFT_DIR  1
 #define ENCODER_RIGHT_DIR 1
 
+#define ENCODER_MM_PER_COUNT_NUM 1
+#define ENCODER_MM_PER_COUNT_DEN 1
+
 /* 最近一次采样得到的左右轮脉冲数，可用于 OLED 显示或速度反馈。 */
 extern volatile int16_t Encoder_LeftSpeed;
 extern volatile int16_t Encoder_RightSpeed;
@@ -23,6 +26,12 @@ void Encoder_Update(void);
 /* 返回最近一次采样值。 */
 int16_t Encoder_GetLeftSpeed(void);
 int16_t Encoder_GetRightSpeed(void);
+int32_t Encoder_GetLeftTotalCount(void);
+int32_t Encoder_GetRightTotalCount(void);
+int32_t Encoder_GetXmm(void);
+int32_t Encoder_GetYmm(void);
+int16_t Encoder_GetPoseYawCdeg(void);
+void Encoder_ResetOdometry(void);
 
 /* 如果知道每圈脉冲数，可以用这个函数把采样值换算成 RPM。 */
 int32_t Encoder_CountToRPM(int16_t count, uint16_t sampleMs, uint16_t countsPerRev);
