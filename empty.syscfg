@@ -6,9 +6,6 @@
  * @versions {"tool":"1.26.2+4477"}
  */
 
-/**
- * Import the modules used in this configuration.
- */
 const ADC12  = scripting.addModule("/ti/driverlib/ADC12", {}, false);
 const ADC121 = ADC12.addInstance();
 const GPIO   = scripting.addModule("/ti/driverlib/GPIO", {}, false);
@@ -23,82 +20,81 @@ const PWM1   = PWM.addInstance();
 const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");
 const UART   = scripting.addModule("/ti/driverlib/UART", {}, false);
 const UART1  = UART.addInstance();
+const Board  = scripting.addModule("/ti/driverlib/Board", {}, false);
 
-/**
- * Write custom configuration values to the imported modules.
- *
- * Hardware map used by the application:
- * - TB6612_PORTB/PORTA: motor direction and standby pins.
- * - TRACKING_SEL + ADC12_0: LongQiu 8-channel grayscale sensor mux.
- * - ENCODER_PORTB: left/right motor quadrature encoder inputs.
- * - OLED_I2C: software-I2C OLED pins.
- * - PWM_0: left/right TB6612 speed PWM channels.
- * - UART_0: MS901M gyro serial input.
+/*
+ * heyvhao hardware map from pinout.md:
+ * - TB6612: PWMA PA12/TIMG0_CCP0, PWMB PA13/TIMG0_CCP1.
+ * - TB6612 direction: AIN1 PB17, AIN2 PB19, BIN1 PA16, BIN2 PB24.
+ * - TB6612 STBY is tied to +5V, so no software STBY pin is used.
+ * - Ganv grayscale: OUT PA18/ADC1_CH3, AD0 PB25, AD1 PB18, AD2 PB21.
+ * - Encoders: left A/B PA26/PA27, right A/B PA25/PA14.
+ * - UART0 for MS901M/ATK-IMU901: TX PA0, RX PA1.
+ * - OLED software I2C: SCL PA31, SDA PA28.
  */
+
 GPIO1.$name                         = "TB6612_PORTB";
 GPIO1.port                          = "PORTB";
-GPIO1.associatedPins.create(2);
-GPIO1.associatedPins[0].$name       = "AIN2";
-GPIO1.associatedPins[0].assignedPin = "20";
-GPIO1.associatedPins[1].$name       = "STBY";
-GPIO1.associatedPins[1].assignedPin = "26";
-
-const Board = scripting.addModule("/ti/driverlib/Board", {}, false);
+GPIO1.associatedPins.create(3);
+GPIO1.associatedPins[0].$name       = "AIN1";
+GPIO1.associatedPins[0].assignedPin = "17";
+GPIO1.associatedPins[1].$name       = "AIN2";
+GPIO1.associatedPins[1].assignedPin = "19";
+GPIO1.associatedPins[2].$name       = "BIN2";
+GPIO1.associatedPins[2].assignedPin = "24";
 
 GPIO2.$name                         = "TB6612_PORTA";
 GPIO2.port                          = "PORTA";
-GPIO2.associatedPins.create(3);
-GPIO2.associatedPins[0].$name       = "AIN1";
-GPIO2.associatedPins[0].assignedPin = "15";
-GPIO2.associatedPins[1].$name       = "BIN1";
-GPIO2.associatedPins[1].assignedPin = "28";
-GPIO2.associatedPins[2].$name       = "BIN2";
-GPIO2.associatedPins[2].assignedPin = "16";
+GPIO2.associatedPins.create(1);
+GPIO2.associatedPins[0].$name       = "BIN1";
+GPIO2.associatedPins[0].assignedPin = "16";
 
 GPIO3.$name                         = "TRACKING_SEL";
-GPIO3.port                          = "PORTA";
+GPIO3.port                          = "PORTB";
 GPIO3.associatedPins.create(3);
-GPIO3.associatedPins[0].$name       = "S0";
-GPIO3.associatedPins[0].assignedPin = "24";
-GPIO3.associatedPins[1].$name       = "S1";
-GPIO3.associatedPins[1].assignedPin = "26";
-GPIO3.associatedPins[2].$name       = "S2";
-GPIO3.associatedPins[2].assignedPin = "27";
+GPIO3.associatedPins[0].$name       = "AD0";
+GPIO3.associatedPins[0].assignedPin = "25";
+GPIO3.associatedPins[1].$name       = "AD1";
+GPIO3.associatedPins[1].assignedPin = "18";
+GPIO3.associatedPins[2].$name       = "AD2";
+GPIO3.associatedPins[2].assignedPin = "21";
 
+/*
+ * The group name remains ENCODER_PORTB for source compatibility.
+ * Its generated PORT macro points to GPIOA in this project.
+ */
 GPIO4.$name                              = "ENCODER_PORTB";
-GPIO4.port                               = "PORTB";
-GPIO4.portSegment                        = "Lower";
+GPIO4.port                               = "PORTA";
 GPIO4.associatedPins.create(4);
 GPIO4.associatedPins[0].$name            = "LEFT_A";
-GPIO4.associatedPins[0].assignedPin      = "6";
+GPIO4.associatedPins[0].assignedPin      = "26";
 GPIO4.associatedPins[0].direction        = "INPUT";
 GPIO4.associatedPins[0].internalResistor = "PULL_UP";
 GPIO4.associatedPins[0].interruptEn      = true;
 GPIO4.associatedPins[0].polarity         = "RISE_FALL";
 GPIO4.associatedPins[1].$name            = "LEFT_B";
-GPIO4.associatedPins[1].assignedPin      = "7";
+GPIO4.associatedPins[1].assignedPin      = "27";
 GPIO4.associatedPins[1].direction        = "INPUT";
 GPIO4.associatedPins[1].internalResistor = "PULL_UP";
 GPIO4.associatedPins[2].$name            = "RIGHT_A";
-GPIO4.associatedPins[2].assignedPin      = "8";
+GPIO4.associatedPins[2].assignedPin      = "25";
 GPIO4.associatedPins[2].direction        = "INPUT";
 GPIO4.associatedPins[2].internalResistor = "PULL_UP";
 GPIO4.associatedPins[2].interruptEn      = true;
 GPIO4.associatedPins[2].polarity         = "RISE_FALL";
 GPIO4.associatedPins[3].$name            = "RIGHT_B";
-GPIO4.associatedPins[3].assignedPin      = "9";
+GPIO4.associatedPins[3].assignedPin      = "14";
 GPIO4.associatedPins[3].direction        = "INPUT";
 GPIO4.associatedPins[3].internalResistor = "PULL_UP";
 
 GPIO5.$name                         = "OLED_I2C";
-GPIO5.port                          = "PORTB";
-GPIO5.portSegment                   = "Lower";
+GPIO5.port                          = "PORTA";
 GPIO5.associatedPins.create(2);
 GPIO5.associatedPins[0].$name       = "SCL";
-GPIO5.associatedPins[0].assignedPin = "10";
+GPIO5.associatedPins[0].assignedPin = "31";
 GPIO5.associatedPins[0].initialValue = "SET";
 GPIO5.associatedPins[1].$name       = "SDA";
-GPIO5.associatedPins[1].assignedPin = "11";
+GPIO5.associatedPins[1].assignedPin = "28";
 GPIO5.associatedPins[1].initialValue = "SET";
 
 GPIO6.$name                         = "RUN_LED";
@@ -113,9 +109,9 @@ PWM1.timerStartTimer            = true;
 PWM1.clockDivider               = 8;
 PWM1.timerCount                 = 1000;
 PWM1.ccIndex                    = [0,1];
-PWM1.peripheral.$assign         = "TIMA0";
-PWM1.peripheral.ccp0Pin.$assign = "PA0";
-PWM1.peripheral.ccp1Pin.$assign = "PA1";
+PWM1.peripheral.$assign         = "TIMG0";
+PWM1.peripheral.ccp0Pin.$assign = "PA12";
+PWM1.peripheral.ccp1Pin.$assign = "PA13";
 PWM1.PWM_CHANNEL_0.$name        = "PWMA";
 PWM1.PWM_CHANNEL_0.dutyCycle    = 0;
 PWM1.PWM_CHANNEL_1.$name        = "PWMB";
@@ -126,43 +122,37 @@ ADC121.sampClkSrc                 = "DL_ADC12_CLOCK_ULPCLK";
 ADC121.sampClkDiv                 = "DL_ADC12_CLOCK_DIVIDE_8";
 ADC121.powerDownMode              = "DL_ADC12_POWER_DOWN_MODE_MANUAL";
 ADC121.sampleTime0                = "40 us";
-ADC121.adcMem0chansel             = "DL_ADC12_INPUT_CHAN_2";
-ADC121.peripheral.$assign         = "ADC0";
-ADC121.peripheral.adcPin2.$assign = "PA25";
+ADC121.adcMem0chansel             = "DL_ADC12_INPUT_CHAN_3";
+ADC121.peripheral.$assign         = "ADC1";
+ADC121.peripheral.adcPin3.$assign = "PA18";
 
 UART1.$name                    = "UART_0";
 UART1.enabledInterrupts        = ["BREAK_ERROR","FRAMING_ERROR","NOISE_ERROR","OVERRUN_ERROR","PARITY_ERROR","RX","RX_TIMEOUT_ERROR"];
 UART1.targetBaudRate           = 115200;
 UART1.peripheral.$assign       = "UART0";
-UART1.peripheral.rxPin.$assign = "PA11";
-UART1.peripheral.txPin.$assign = "PA10";
+UART1.peripheral.txPin.$assign = "PA0";
+UART1.peripheral.rxPin.$assign = "PA1";
 
 SYSCTL.forceDefaultClkConfig = true;
 
-/**
- * Pinmux solution for unlocked pins/peripherals. This ensures that minor changes to the automatic solver in a future
- * version of the tool will not impact the pinmux you originally saw. These lines can be completely deleted in order to
- * re-solve from scratch.
- */
-GPIO1.associatedPins[0].pin.$suggestSolution = "PB20";
-GPIO1.associatedPins[1].pin.$suggestSolution = "PB26";
+GPIO1.associatedPins[0].pin.$suggestSolution = "PB17";
+GPIO1.associatedPins[1].pin.$suggestSolution = "PB19";
+GPIO1.associatedPins[2].pin.$suggestSolution = "PB24";
 Board.peripheral.$suggestSolution            = "DEBUGSS";
 Board.peripheral.swclkPin.$suggestSolution   = "PA20";
 Board.peripheral.swdioPin.$suggestSolution   = "PA19";
-GPIO2.associatedPins[0].pin.$suggestSolution = "PA15";
-GPIO2.associatedPins[1].pin.$suggestSolution = "PA28";
-GPIO2.associatedPins[2].pin.$suggestSolution = "PA16";
-GPIO3.associatedPins[0].pin.$suggestSolution = "PA24";
-GPIO3.associatedPins[1].pin.$suggestSolution = "PA26";
-GPIO3.associatedPins[2].pin.$suggestSolution = "PA27";
-GPIO4.associatedPins[0].pin.$suggestSolution = "PB6";
-GPIO4.associatedPins[1].pin.$suggestSolution = "PB7";
-GPIO4.associatedPins[2].pin.$suggestSolution = "PB8";
-GPIO4.associatedPins[3].pin.$suggestSolution = "PB9";
-GPIO5.associatedPins[0].pin.$suggestSolution = "PB10";
-GPIO5.associatedPins[1].pin.$suggestSolution = "PB11";
+GPIO2.associatedPins[0].pin.$suggestSolution = "PA16";
+GPIO3.associatedPins[0].pin.$suggestSolution = "PB25";
+GPIO3.associatedPins[1].pin.$suggestSolution = "PB18";
+GPIO3.associatedPins[2].pin.$suggestSolution = "PB21";
+GPIO4.associatedPins[0].pin.$suggestSolution = "PA26";
+GPIO4.associatedPins[1].pin.$suggestSolution = "PA27";
+GPIO4.associatedPins[2].pin.$suggestSolution = "PA25";
+GPIO4.associatedPins[3].pin.$suggestSolution = "PA14";
+GPIO5.associatedPins[0].pin.$suggestSolution = "PA31";
+GPIO5.associatedPins[1].pin.$suggestSolution = "PA28";
 GPIO6.associatedPins[0].pin.$suggestSolution = "PB27";
 SYSCTL.peripheral.$suggestSolution           = "SYSCTL";
 UART1.peripheral.$suggestSolution            = "UART0";
-UART1.peripheral.rxPin.$suggestSolution      = "PA11";
-UART1.peripheral.txPin.$suggestSolution      = "PA10";
+UART1.peripheral.txPin.$suggestSolution      = "PA0";
+UART1.peripheral.rxPin.$suggestSolution      = "PA1";

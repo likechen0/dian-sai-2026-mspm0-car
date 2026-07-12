@@ -3,10 +3,29 @@
 #include "ti_msp_dl_config.h"
 
 /*
- * 龙邱 8 路灰度循迹模块。
- * 模块只有一个模拟输出 AS，靠 S0/S1/S2 选择当前读哪一路。
- * 本驱动依次选择 8 路、读取 ADC，再计算加权循迹误差给导航状态机使用。
+ * 感为传感器采集层。
+ *
+ * 官方例程的核心思想有两个：
+ * 1. 每路都有黑/白校准值，把原始 ADC 归一化到 0..4096。
+ * 2. 白底黑线时，用 4096 - normal 得到黑线强度，再做加权平均。
+ *
+ * 当前默认校准值来自感为 Car_OPEN 示例，只作为能启动测试的初值。
+ * 换安装高度、换赛道、换供电后，应把下面两组值换成你实际测到的
+ * 白底 ADC 和黑线 ADC。
  */
+static const uint16_t Tracking_CalWhite[TRACKING_CHANNEL_COUNT] = {
+    1155U, 2009U, 1528U, 2344U, 2320U, 1757U, 1721U, 1420U
+};
+
+static const uint16_t Tracking_CalBlack[TRACKING_CHANNEL_COUNT] = {
+    67U, 72U, 72U, 72U, 73U, 74U, 73U, 64U
+};
+
+uint16_t Ganv_Tracking_Raw[TRACKING_CHANNEL_COUNT] = {0};
+uint16_t Ganv_Tracking_Normal[TRACKING_CHANNEL_COUNT] = {0};
+volatile uint8_t Ganv_Tracking_LineMask = 0U;
+volatile uint8_t Ganv_Tracking_WhiteMask = 0xFFU;
+
 unsigned char LQ_Tracking_Value[TRACKING_CHANNEL_COUNT] = {0};
 volatile int16_t Tracking_Error = 0;
 volatile int16_t Tracking_Correction = 0;
@@ -17,8 +36,8 @@ static int16_t Tracking_LastControlError = 0;
 
 static void Tracking_ShortDelay(void)
 {
-    /* 切换 S0/S1/S2 后，给模拟多路选择器一点稳定时间。 */
-    delay_cycles(CPUCLK_FREQ / 200000U);
+    /* 地址线切换后给模拟开关一点稳定时间。 */
+    delay_cycles(CPUCLK_FREQ / 100000U);
 }
 
 static int16_t Tracking_LimitSpeed(int32_t speed)
@@ -32,20 +51,95 @@ static int16_t Tracking_LimitSpeed(int32_t speed)
     return (int16_t)speed;
 }
 
-static uint16_t Tracking_GetLineStrength(uint8_t index)
+static uint16_t Tracking_Normalize(uint8_t index, uint16_t raw)
 {
-    uint16_t value = LQ_Tracking_Value[index];
+    uint16_t white = Tracking_CalWhite[index];
+    uint16_t black = Tracking_CalBlack[index];
+    uint32_t normal;
 
-#if !TRACKING_BLACK_IS_HIGH
-    /* 统一成“数值越大，越像黑线”。 */
-    value = TRACKING_VALUE_MAX - value;
-#endif
-
-    if (value < TRACKING_LINE_THRESHOLD) {
-        return 0;
+    if (white <= black) {
+        return (uint16_t)(((uint32_t)raw * TRACKING_NORMAL_MAX) / 4095U);
     }
 
-    return value - TRACKING_LINE_THRESHOLD;
+    if (raw <= black) {
+        return 0U;
+    }
+
+    normal = ((uint32_t)(raw - black) * TRACKING_NORMAL_MAX) /
+        (uint32_t)(white - black);
+
+    if (normal > TRACKING_NORMAL_MAX) {
+        normal = TRACKING_NORMAL_MAX;
+    }
+
+    return (uint16_t)normal;
+}
+
+static void Tracking_UpdateWhiteMask(uint8_t index, uint16_t raw)
+{
+    uint16_t white = Tracking_CalWhite[index];
+    uint16_t black = Tracking_CalBlack[index];
+    uint16_t temp;
+    uint16_t grayWhite;
+    uint16_t grayBlack;
+    uint8_t bit = (uint8_t)(1U << index);
+
+    if (white < black) {
+        temp = white;
+        white = black;
+        black = temp;
+    }
+
+    grayWhite = (uint16_t)(((uint32_t)white * 2U + black) / 3U);
+    grayBlack = (uint16_t)(((uint32_t)white + (uint32_t)black * 2U) / 3U);
+
+    if (raw > grayWhite) {
+        Ganv_Tracking_WhiteMask |= bit;
+    } else if (raw < grayBlack) {
+        Ganv_Tracking_WhiteMask &= (uint8_t)(~bit);
+    }
+}
+
+static uint16_t Tracking_GetLineStrengthByIndex(uint8_t index)
+{
+    uint16_t normal;
+    uint16_t strength;
+
+    if (index >= TRACKING_CHANNEL_COUNT) {
+        return 0U;
+    }
+
+    normal = Ganv_Tracking_Normal[index];
+    if (normal >= TRACKING_NORMAL_MAX) {
+        return 0U;
+    }
+
+    strength = (uint16_t)(TRACKING_NORMAL_MAX - normal);
+    if (strength < TRACKING_LINE_THRESHOLD) {
+        return 0U;
+    }
+
+    return (uint16_t)(strength - TRACKING_LINE_THRESHOLD);
+}
+
+static uint8_t Tracking_ChannelToStoreIndex(uint8_t channel)
+{
+#if TRACKING_REVERSE_ORDER
+    return (uint8_t)(TRACKING_CHANNEL_COUNT - channel);
+#else
+    return (uint8_t)(channel - 1U);
+#endif
+}
+
+static uint8_t Tracking_AddressBit(uint8_t address, uint8_t bit)
+{
+    uint8_t value = (uint8_t)((address >> bit) & 1U);
+
+#if TRACKING_ADDR_INVERT
+    value ^= 1U;
+#endif
+
+    return value;
 }
 
 uint8_t Tracking_IsSensorOnLine(uint8_t channel)
@@ -54,21 +148,22 @@ uint8_t Tracking_IsSensorOnLine(uint8_t channel)
         return 0U;
     }
 
-    return (Tracking_GetLineStrength(channel - 1U) > 0U) ? 1U : 0U;
+    return ((Ganv_Tracking_LineMask & (uint8_t)(1U << (channel - 1U))) != 0U) ?
+        1U : 0U;
 }
 
 uint8_t Tracking_GetLineMask(void)
 {
-    uint8_t i;
-    uint8_t mask = 0U;
+    return Ganv_Tracking_LineMask;
+}
 
-    for (i = 0U; i < TRACKING_CHANNEL_COUNT; i++) {
-        if (Tracking_GetLineStrength(i) > 0U) {
-            mask |= (uint8_t)(1U << i);
-        }
+uint16_t Tracking_GetLineStrength(uint8_t channel)
+{
+    if ((channel < 1U) || (channel > TRACKING_CHANNEL_COUNT)) {
+        return 0U;
     }
 
-    return mask;
+    return Tracking_GetLineStrengthByIndex((uint8_t)(channel - 1U));
 }
 
 void Tracking_Init(void)
@@ -78,25 +173,24 @@ void Tracking_Init(void)
 
 void Tracking_Adc_Init(void)
 {
-    /* 先选择第 1 路，并使能 ADC 转换。 */
-    Tracking_IO_Set(0, 0, 0);
+    Tracking_IO_Set(0U, 0U, 0U);
     DL_ADC12_enableConversions(ADC12_0_INST);
 }
 
-void Tracking_IO_Set(unsigned char s2, unsigned char s1, unsigned char s0)
+void Tracking_IO_Set(unsigned char ad2, unsigned char ad1, unsigned char ad0)
 {
     uint32_t setPins = 0U;
-    uint32_t clearPins = TRACKING_SEL_S0_PIN | TRACKING_SEL_S1_PIN | TRACKING_SEL_S2_PIN;
+    uint32_t clearPins = TRACKING_SEL_AD0_PIN |
+        TRACKING_SEL_AD1_PIN | TRACKING_SEL_AD2_PIN;
 
-    /* 把通道选择位转换成 GPIO 置位/清零掩码。 */
-    if (s0 != 0U) {
-        setPins |= TRACKING_SEL_S0_PIN;
+    if (ad0 != 0U) {
+        setPins |= TRACKING_SEL_AD0_PIN;
     }
-    if (s1 != 0U) {
-        setPins |= TRACKING_SEL_S1_PIN;
+    if (ad1 != 0U) {
+        setPins |= TRACKING_SEL_AD1_PIN;
     }
-    if (s2 != 0U) {
-        setPins |= TRACKING_SEL_S2_PIN;
+    if (ad2 != 0U) {
+        setPins |= TRACKING_SEL_AD2_PIN;
     }
 
     clearPins &= ~setPins;
@@ -109,106 +203,113 @@ void Tracking_IO_Set(unsigned char s2, unsigned char s1, unsigned char s0)
 uint16_t Tracking_Adc_once(void)
 {
     uint32_t timeout = 100000U;
+    uint16_t value;
 
-    /* 启动一次单次 ADC 转换，并等待 MEM0 结果就绪。 */
-    DL_ADC12_clearInterruptStatus(ADC12_0_INST, DL_ADC12_INTERRUPT_MEM0_RESULT_LOADED);
+    DL_ADC12_clearInterruptStatus(ADC12_0_INST,
+        DL_ADC12_INTERRUPT_MEM0_RESULT_LOADED);
     DL_ADC12_startConversion(ADC12_0_INST);
 
-    while ((DL_ADC12_getRawInterruptStatus(
-                ADC12_0_INST, DL_ADC12_INTERRUPT_MEM0_RESULT_LOADED) == 0U) &&
+    while ((DL_ADC12_getRawInterruptStatus(ADC12_0_INST,
+                DL_ADC12_INTERRUPT_MEM0_RESULT_LOADED) == 0U) &&
            (timeout > 0U)) {
         timeout--;
     }
 
     if (timeout == 0U) {
-        /* 超时保护：保持 ADC 可用，并返回一个近似“没线”的值。 */
         DL_ADC12_enableConversions(ADC12_0_INST);
-        return 0;
+        return 0U;
     }
 
-    uint16_t value = DL_ADC12_getMemResult(ADC12_0_INST, ADC12_0_ADCMEM_0);
+    value = DL_ADC12_getMemResult(ADC12_0_INST, ADC12_0_ADCMEM_0);
     DL_ADC12_enableConversions(ADC12_0_INST);
+
     return value;
 }
 
 unsigned int Tracking_Value_once(unsigned char ch)
 {
     uint8_t i;
-    uint16_t data;
-    uint16_t sum = 0;
-    const uint8_t numSamples = 5;
-    const uint8_t discardSamples = 3;
+    uint8_t address;
+    uint32_t sum = 0U;
+    const uint8_t sampleCount = 5U;
+    const uint8_t discardCount = 2U;
 
-    /*
-     * 每一路切换后读多次。
-     * 前几次丢弃，用来减小模拟多路选择器切换后的抖动。
-     */
-    for (i = 0; i < numSamples; i++) {
-        switch (ch) {
-            case 1: Tracking_IO_Set(0, 0, 0); break;
-            case 2: Tracking_IO_Set(0, 0, 1); break;
-            case 3: Tracking_IO_Set(0, 1, 0); break;
-            case 4: Tracking_IO_Set(0, 1, 1); break;
-            case 5: Tracking_IO_Set(1, 0, 0); break;
-            case 6: Tracking_IO_Set(1, 0, 1); break;
-            case 7: Tracking_IO_Set(1, 1, 0); break;
-            case 8: Tracking_IO_Set(1, 1, 1); break;
-            default: Tracking_IO_Set(0, 0, 0); break;
-        }
+    if ((ch < 1U) || (ch > TRACKING_CHANNEL_COUNT)) {
+        ch = 1U;
+    }
 
-        /* 把 12 位 ADC 原始值缩放到 0..100，方便阈值判断。 */
-        data = (uint16_t)(((uint32_t)Tracking_Adc_once() * TRACKING_VALUE_MAX) / 4095U);
-        if (data > TRACKING_VALUE_MAX) {
-            data = TRACKING_VALUE_MAX;
-        }
+    address = (uint8_t)(ch - 1U);
+    Tracking_IO_Set(
+        Tracking_AddressBit(address, 2U),
+        Tracking_AddressBit(address, 1U),
+        Tracking_AddressBit(address, 0U));
 
-        if (i >= discardSamples) {
-            sum += data;
+    for (i = 0U; i < sampleCount; i++) {
+        uint16_t raw = Tracking_Adc_once();
+
+        if (i >= discardCount) {
+            sum += raw;
         }
     }
 
-    return sum / (numSamples - discardSamples);
+    return (unsigned int)(sum / (sampleCount - discardCount));
 }
 
 void Tracking_Value_Acquire(void)
 {
-    uint8_t i;
+    uint8_t ch;
+    uint8_t index;
+    uint16_t raw;
+    uint16_t normal;
+    uint16_t strength;
+    uint8_t lineMask = 0U;
 
-    /* 刷新全局 8 路灰度数组。 */
-    for (i = 0; i < TRACKING_CHANNEL_COUNT; i++) {
-        LQ_Tracking_Value[i] = (unsigned char)Tracking_Value_once(i + 1U);
+    for (ch = 1U; ch <= TRACKING_CHANNEL_COUNT; ch++) {
+        index = Tracking_ChannelToStoreIndex(ch);
+        raw = (uint16_t)Tracking_Value_once(ch);
+        normal = Tracking_Normalize(index, raw);
+
+        Ganv_Tracking_Raw[index] = raw;
+        Ganv_Tracking_Normal[index] = normal;
+        Tracking_UpdateWhiteMask(index, raw);
+
+        strength = Tracking_GetLineStrengthByIndex(index);
+        LQ_Tracking_Value[index] = (unsigned char)
+            (((uint32_t)strength * TRACKING_VALUE_MAX) /
+             (TRACKING_NORMAL_MAX - TRACKING_LINE_THRESHOLD));
+
+        if (strength > 0U) {
+            lineMask |= (uint8_t)(1U << index);
+        }
     }
+
+    Ganv_Tracking_LineMask = lineMask;
 }
 
 int16_t Tracking_CalcError(void)
 {
-    /*
-     * 左侧传感器权重为负，右侧传感器权重为正。
-     * 加权平均后得到黑线相对中心的位置误差。
-     */
     static const int16_t weight[TRACKING_CHANNEL_COUNT] = {
         -3500, -2500, -1500, -500, 500, 1500, 2500, 3500
     };
     uint8_t i;
     uint16_t strength;
-    uint16_t total = 0;
+    uint32_t total = 0U;
     int32_t weightedSum = 0;
 
-    for (i = 0; i < TRACKING_CHANNEL_COUNT; i++) {
-        strength = Tracking_GetLineStrength(i);
+    for (i = 0U; i < TRACKING_CHANNEL_COUNT; i++) {
+        strength = Tracking_GetLineStrengthByIndex(i);
         total += strength;
         weightedSum += (int32_t)strength * weight[i];
     }
 
     if (total == 0U) {
-        /* 没线时保留上次误差，这样重新看到线时不会突然跳变太大。 */
-        Tracking_LineDetected = 0;
+        Tracking_LineDetected = 0U;
         Tracking_Error = Tracking_LastError;
         return Tracking_Error;
     }
 
-    Tracking_LineDetected = 1;
-    Tracking_Error = (int16_t)(weightedSum / total);
+    Tracking_LineDetected = 1U;
+    Tracking_Error = (int16_t)(weightedSum / (int32_t)total);
     Tracking_LastError = Tracking_Error;
 
     return Tracking_Error;
@@ -226,13 +327,11 @@ void Tracking_LineFollowStep(void)
     error = Tracking_CalcError();
 
     if (Tracking_LineDetected == 0U) {
-        /* 这个独立测试函数的策略：没线就停车。 */
         Tracking_Correction = 0;
         Motor_Stop();
         return;
     }
 
-    /* 这个函数保留给单独测试巡线用；当前主程序用 NAV 里的状态机。 */
     derivative = error - Tracking_LastControlError;
     Tracking_LastControlError = error;
 
@@ -241,8 +340,10 @@ void Tracking_LineFollowStep(void)
 
     Tracking_Correction = Tracking_LimitSpeed(correction);
 
-    leftSpeed = Tracking_LimitSpeed((int32_t)TRACKING_BASE_SPEED + Tracking_Correction);
-    rightSpeed = Tracking_LimitSpeed((int32_t)TRACKING_BASE_SPEED - Tracking_Correction);
+    leftSpeed = Tracking_LimitSpeed((int32_t)TRACKING_BASE_SPEED +
+        Tracking_Correction);
+    rightSpeed = Tracking_LimitSpeed((int32_t)TRACKING_BASE_SPEED -
+        Tracking_Correction);
 
     Motor_SetSpeed(leftSpeed, rightSpeed);
 }

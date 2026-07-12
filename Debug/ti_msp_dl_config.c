@@ -40,8 +40,6 @@
 
 #include "ti_msp_dl_config.h"
 
-DL_TimerA_backupConfig gPWM_0Backup;
-
 /*
  *  ======== SYSCFG_DL_init ========
  *  Perform any initialization needed before using any board APIs
@@ -55,45 +53,21 @@ SYSCONFIG_WEAK void SYSCFG_DL_init(void)
     SYSCFG_DL_PWM_0_init();
     SYSCFG_DL_UART_0_init();
     SYSCFG_DL_ADC12_0_init();
-    /* Ensure backup structures have no valid state */
-	gPWM_0Backup.backupRdy 	= false;
-
-
-}
-/*
- * User should take care to save and restore register configuration in application.
- * See Retention Configuration section for more details.
- */
-SYSCONFIG_WEAK bool SYSCFG_DL_saveConfiguration(void)
-{
-    bool retStatus = true;
-
-	retStatus &= DL_TimerA_saveConfiguration(PWM_0_INST, &gPWM_0Backup);
-
-    return retStatus;
 }
 
 
-SYSCONFIG_WEAK bool SYSCFG_DL_restoreConfiguration(void)
-{
-    bool retStatus = true;
-
-	retStatus &= DL_TimerA_restoreConfiguration(PWM_0_INST, &gPWM_0Backup, false);
-
-    return retStatus;
-}
 
 SYSCONFIG_WEAK void SYSCFG_DL_initPower(void)
 {
     DL_GPIO_reset(GPIOA);
     DL_GPIO_reset(GPIOB);
-    DL_TimerA_reset(PWM_0_INST);
+    DL_TimerG_reset(PWM_0_INST);
     DL_UART_Main_reset(UART_0_INST);
     DL_ADC12_reset(ADC12_0_INST);
 
     DL_GPIO_enablePower(GPIOA);
     DL_GPIO_enablePower(GPIOB);
-    DL_TimerA_enablePower(PWM_0_INST);
+    DL_TimerG_enablePower(PWM_0_INST);
     DL_UART_Main_enablePower(UART_0_INST);
     DL_ADC12_enablePower(ADC12_0_INST);
     delay_cycles(POWER_STARTUP_DELAY);
@@ -114,21 +88,19 @@ SYSCONFIG_WEAK void SYSCFG_DL_GPIO_init(void)
 
     DL_GPIO_initDigitalOutput(RUN_LED_LED_IOMUX);
 
+    DL_GPIO_initDigitalOutput(TB6612_PORTB_AIN1_IOMUX);
+
     DL_GPIO_initDigitalOutput(TB6612_PORTB_AIN2_IOMUX);
 
-    DL_GPIO_initDigitalOutput(TB6612_PORTB_STBY_IOMUX);
-
-    DL_GPIO_initDigitalOutput(TB6612_PORTA_AIN1_IOMUX);
+    DL_GPIO_initDigitalOutput(TB6612_PORTB_BIN2_IOMUX);
 
     DL_GPIO_initDigitalOutput(TB6612_PORTA_BIN1_IOMUX);
 
-    DL_GPIO_initDigitalOutput(TB6612_PORTA_BIN2_IOMUX);
+    DL_GPIO_initDigitalOutput(TRACKING_SEL_AD0_IOMUX);
 
-    DL_GPIO_initDigitalOutput(TRACKING_SEL_S0_IOMUX);
+    DL_GPIO_initDigitalOutput(TRACKING_SEL_AD1_IOMUX);
 
-    DL_GPIO_initDigitalOutput(TRACKING_SEL_S1_IOMUX);
-
-    DL_GPIO_initDigitalOutput(TRACKING_SEL_S2_IOMUX);
+    DL_GPIO_initDigitalOutput(TRACKING_SEL_AD2_IOMUX);
 
     DL_GPIO_initDigitalInputFeatures(ENCODER_PORTB_LEFT_A_IOMUX,
 		 DL_GPIO_INVERSION_DISABLE, DL_GPIO_RESISTOR_PULL_UP,
@@ -150,34 +122,32 @@ SYSCONFIG_WEAK void SYSCFG_DL_GPIO_init(void)
 
     DL_GPIO_initDigitalOutput(OLED_I2C_SDA_IOMUX);
 
-    DL_GPIO_clearPins(GPIOA, TB6612_PORTA_AIN1_PIN |
-		TB6612_PORTA_BIN1_PIN |
-		TB6612_PORTA_BIN2_PIN |
-		TRACKING_SEL_S0_PIN |
-		TRACKING_SEL_S1_PIN |
-		TRACKING_SEL_S2_PIN);
-    DL_GPIO_enableOutput(GPIOA, TB6612_PORTA_AIN1_PIN |
-		TB6612_PORTA_BIN1_PIN |
-		TB6612_PORTA_BIN2_PIN |
-		TRACKING_SEL_S0_PIN |
-		TRACKING_SEL_S1_PIN |
-		TRACKING_SEL_S2_PIN);
-    DL_GPIO_clearPins(GPIOB, RUN_LED_LED_PIN |
-		TB6612_PORTB_AIN2_PIN |
-		TB6612_PORTB_STBY_PIN);
-    DL_GPIO_setPins(GPIOB, OLED_I2C_SCL_PIN |
+    DL_GPIO_clearPins(GPIOA, TB6612_PORTA_BIN1_PIN);
+    DL_GPIO_setPins(GPIOA, OLED_I2C_SCL_PIN |
 		OLED_I2C_SDA_PIN);
-    DL_GPIO_enableOutput(GPIOB, RUN_LED_LED_PIN |
-		TB6612_PORTB_AIN2_PIN |
-		TB6612_PORTB_STBY_PIN |
+    DL_GPIO_enableOutput(GPIOA, TB6612_PORTA_BIN1_PIN |
 		OLED_I2C_SCL_PIN |
 		OLED_I2C_SDA_PIN);
-    DL_GPIO_setLowerPinsPolarity(GPIOB, DL_GPIO_PIN_6_EDGE_RISE_FALL |
-		DL_GPIO_PIN_8_EDGE_RISE_FALL);
-    DL_GPIO_clearInterruptStatus(GPIOB, ENCODER_PORTB_LEFT_A_PIN |
+    DL_GPIO_setUpperPinsPolarity(GPIOA, DL_GPIO_PIN_26_EDGE_RISE_FALL |
+		DL_GPIO_PIN_25_EDGE_RISE_FALL);
+    DL_GPIO_clearInterruptStatus(GPIOA, ENCODER_PORTB_LEFT_A_PIN |
 		ENCODER_PORTB_RIGHT_A_PIN);
-    DL_GPIO_enableInterrupt(GPIOB, ENCODER_PORTB_LEFT_A_PIN |
+    DL_GPIO_enableInterrupt(GPIOA, ENCODER_PORTB_LEFT_A_PIN |
 		ENCODER_PORTB_RIGHT_A_PIN);
+    DL_GPIO_clearPins(GPIOB, RUN_LED_LED_PIN |
+		TB6612_PORTB_AIN1_PIN |
+		TB6612_PORTB_AIN2_PIN |
+		TB6612_PORTB_BIN2_PIN |
+		TRACKING_SEL_AD0_PIN |
+		TRACKING_SEL_AD1_PIN |
+		TRACKING_SEL_AD2_PIN);
+    DL_GPIO_enableOutput(GPIOB, RUN_LED_LED_PIN |
+		TB6612_PORTB_AIN1_PIN |
+		TB6612_PORTB_AIN2_PIN |
+		TB6612_PORTB_BIN2_PIN |
+		TRACKING_SEL_AD0_PIN |
+		TRACKING_SEL_AD1_PIN |
+		TRACKING_SEL_AD2_PIN);
 
 }
 
@@ -203,49 +173,49 @@ SYSCONFIG_WEAK void SYSCFG_DL_SYSCTL_init(void)
  * timerClkFreq = (timerClkSrc / (timerClkDivRatio * (timerClkPrescale + 1)))
  *   4000000 Hz = 4000000 Hz / (8 * (0 + 1))
  */
-static const DL_TimerA_ClockConfig gPWM_0ClockConfig = {
+static const DL_TimerG_ClockConfig gPWM_0ClockConfig = {
     .clockSel = DL_TIMER_CLOCK_BUSCLK,
     .divideRatio = DL_TIMER_CLOCK_DIVIDE_8,
     .prescale = 0U
 };
 
-static const DL_TimerA_PWMConfig gPWM_0Config = {
+static const DL_TimerG_PWMConfig gPWM_0Config = {
     .pwmMode = DL_TIMER_PWM_MODE_EDGE_ALIGN,
     .period = 1000,
-    .isTimerWithFourCC = true,
+    .isTimerWithFourCC = false,
     .startTimer = DL_TIMER_START,
 };
 
 SYSCONFIG_WEAK void SYSCFG_DL_PWM_0_init(void) {
 
-    DL_TimerA_setClockConfig(
-        PWM_0_INST, (DL_TimerA_ClockConfig *) &gPWM_0ClockConfig);
+    DL_TimerG_setClockConfig(
+        PWM_0_INST, (DL_TimerG_ClockConfig *) &gPWM_0ClockConfig);
 
-    DL_TimerA_initPWMMode(
-        PWM_0_INST, (DL_TimerA_PWMConfig *) &gPWM_0Config);
+    DL_TimerG_initPWMMode(
+        PWM_0_INST, (DL_TimerG_PWMConfig *) &gPWM_0Config);
 
     // Set Counter control to the smallest CC index being used
-    DL_TimerA_setCounterControl(PWM_0_INST,DL_TIMER_CZC_CCCTL0_ZCOND,DL_TIMER_CAC_CCCTL0_ACOND,DL_TIMER_CLC_CCCTL0_LCOND);
+    DL_TimerG_setCounterControl(PWM_0_INST,DL_TIMER_CZC_CCCTL0_ZCOND,DL_TIMER_CAC_CCCTL0_ACOND,DL_TIMER_CLC_CCCTL0_LCOND);
 
-    DL_TimerA_setCaptureCompareOutCtl(PWM_0_INST, DL_TIMER_CC_OCTL_INIT_VAL_LOW,
+    DL_TimerG_setCaptureCompareOutCtl(PWM_0_INST, DL_TIMER_CC_OCTL_INIT_VAL_LOW,
 		DL_TIMER_CC_OCTL_INV_OUT_DISABLED, DL_TIMER_CC_OCTL_SRC_FUNCVAL,
-		DL_TIMERA_CAPTURE_COMPARE_0_INDEX);
+		DL_TIMERG_CAPTURE_COMPARE_0_INDEX);
 
-    DL_TimerA_setCaptCompUpdateMethod(PWM_0_INST, DL_TIMER_CC_UPDATE_METHOD_IMMEDIATE, DL_TIMERA_CAPTURE_COMPARE_0_INDEX);
-    DL_TimerA_setCaptureCompareValue(PWM_0_INST, 1000, DL_TIMER_CC_0_INDEX);
+    DL_TimerG_setCaptCompUpdateMethod(PWM_0_INST, DL_TIMER_CC_UPDATE_METHOD_IMMEDIATE, DL_TIMERG_CAPTURE_COMPARE_0_INDEX);
+    DL_TimerG_setCaptureCompareValue(PWM_0_INST, 1000, DL_TIMER_CC_0_INDEX);
 
-    DL_TimerA_setCaptureCompareOutCtl(PWM_0_INST, DL_TIMER_CC_OCTL_INIT_VAL_LOW,
+    DL_TimerG_setCaptureCompareOutCtl(PWM_0_INST, DL_TIMER_CC_OCTL_INIT_VAL_LOW,
 		DL_TIMER_CC_OCTL_INV_OUT_DISABLED, DL_TIMER_CC_OCTL_SRC_FUNCVAL,
-		DL_TIMERA_CAPTURE_COMPARE_1_INDEX);
+		DL_TIMERG_CAPTURE_COMPARE_1_INDEX);
 
-    DL_TimerA_setCaptCompUpdateMethod(PWM_0_INST, DL_TIMER_CC_UPDATE_METHOD_IMMEDIATE, DL_TIMERA_CAPTURE_COMPARE_1_INDEX);
-    DL_TimerA_setCaptureCompareValue(PWM_0_INST, 1000, DL_TIMER_CC_1_INDEX);
+    DL_TimerG_setCaptCompUpdateMethod(PWM_0_INST, DL_TIMER_CC_UPDATE_METHOD_IMMEDIATE, DL_TIMERG_CAPTURE_COMPARE_1_INDEX);
+    DL_TimerG_setCaptureCompareValue(PWM_0_INST, 1000, DL_TIMER_CC_1_INDEX);
 
-    DL_TimerA_enableClock(PWM_0_INST);
+    DL_TimerG_enableClock(PWM_0_INST);
 
 
     
-    DL_TimerA_setCCPDirection(PWM_0_INST , DL_TIMER_CC0_OUTPUT | DL_TIMER_CC1_OUTPUT );
+    DL_TimerG_setCCPDirection(PWM_0_INST , DL_TIMER_CC0_OUTPUT | DL_TIMER_CC1_OUTPUT );
 
 
 }
@@ -303,7 +273,7 @@ SYSCONFIG_WEAK void SYSCFG_DL_ADC12_0_init(void)
 {
     DL_ADC12_setClockConfig(ADC12_0_INST, (DL_ADC12_ClockConfig *) &gADC12_0ClockConfig);
     DL_ADC12_configConversionMem(ADC12_0_INST, ADC12_0_ADCMEM_0,
-        DL_ADC12_INPUT_CHAN_2, DL_ADC12_REFERENCE_VOLTAGE_VDDA, DL_ADC12_SAMPLE_TIMER_SOURCE_SCOMP0, DL_ADC12_AVERAGING_MODE_DISABLED,
+        DL_ADC12_INPUT_CHAN_3, DL_ADC12_REFERENCE_VOLTAGE_VDDA, DL_ADC12_SAMPLE_TIMER_SOURCE_SCOMP0, DL_ADC12_AVERAGING_MODE_DISABLED,
         DL_ADC12_BURN_OUT_SOURCE_DISABLED, DL_ADC12_TRIGGER_MODE_AUTO_NEXT, DL_ADC12_WINDOWS_COMP_MODE_DISABLED);
     DL_ADC12_setPowerDownMode(ADC12_0_INST,DL_ADC12_POWER_DOWN_MODE_MANUAL);
     DL_ADC12_setSampleTime0(ADC12_0_INST,160);

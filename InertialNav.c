@@ -13,6 +13,12 @@
  *   - 计数为奇数左转 45 度，计数为偶数右转 45 度。
  *
  * 角度单位是 0.01 度：4500 表示 45.00 度。
+ *
+ * 关键开关位置：
+ *   - NAV_LOST_SEARCH_ENABLE：离线追线。丢线后按最后外侧 S1/S8 方向追回。
+ *   - NAV_OUTER_GUARD_ENABLE：左右固定转。外侧 S1/S8 识别到线时给固定差速修正。
+ *   - NAV_ENABLE_LINE_TURN：脱线导航转。有线到无线后按计数奇偶触发陀螺仪 45 度转向。
+ * 0 表示关闭，1 表示打开。调 PID 在 Tracking.h 里改 TRACKING_KP/KD。
  */
 #define NAV_FORWARD_SPEED       2000
 #define NAV_TURN_45_CDEG        4500
@@ -20,17 +26,23 @@
 #define NAV_LINE_STABLE_CYCLES  5U
 #define NAV_LOST_STABLE_CYCLES  3U
 #define NAV_TURN_TIMEOUT_STEPS  200U
-/* 改成 1 可以恢复“丢线后奇数左转、偶数右转”的 45 度转弯。 */
+/* 脱线导航转开关：改成 1 后，稳定有线 -> 稳定无线会按奇偶计数触发 45 度陀螺仪转向。 */
 #define NAV_ENABLE_LINE_TURN    0U
 
 #define NAV_OUTER_LEFT_MASK     ((uint8_t)(1U << 0))
 #define NAV_OUTER_RIGHT_MASK    ((uint8_t)(1U << 7))
 
-#define NAV_LOST_SEARCH_ENABLE          1U
+/* 离线追线开关：改成 1 后，最后只见到 S1/S8 再丢线时，会沿最后外侧方向低速追回。 */
+#define NAV_LOST_SEARCH_ENABLE          0U
 #define NAV_LOST_SEARCH_LEFT_SIDE       (-1)
 #define NAV_LOST_SEARCH_RIGHT_SIDE      1
 #define NAV_LOST_SEARCH_FORWARD_SPEED   200
 #define NAV_LOST_SEARCH_TURN_SPEED      900
+
+/* 左右固定转开关：改成 1 后，S1 或 S8 单独识别到线时，本周期给固定差速修正。 */
+#define NAV_OUTER_GUARD_ENABLE          0U
+#define NAV_OUTER_GUARD_SPEED           1400
+#define NAV_OUTER_GUARD_CORRECTION      1000
 
 #define NAV_TRACK_MIN_SPEED             1200
 #define NAV_TRACK_SLOWDOWN_DEN          4
@@ -115,11 +127,6 @@ static void NAV_ClearLineState(void)
     gLineTurnArmed = 0;
 }
 
-static void NAV_ClearLostSearchState(void)
-{
-    gSearchOuterLineSide = 0;
-}
-
 static uint8_t NAV_UpdateLinePassCounter(void)
 {
     uint8_t now = Tracking_LineDetected ? 1U : 0U;
@@ -200,6 +207,38 @@ static void NAV_LineFollowFromCurrentError(void)
     Motor_SetSpeed(leftSpeed, rightSpeed);
 }
 
+#if NAV_OUTER_GUARD_ENABLE
+static uint8_t NAV_OuterGuardStep(void)
+{
+    uint8_t mask = Tracking_GetLineMask();
+    uint8_t leftOuter = ((mask & NAV_OUTER_LEFT_MASK) != 0U) ? 1U : 0U;
+    uint8_t rightOuter = ((mask & NAV_OUTER_RIGHT_MASK) != 0U) ? 1U : 0U;
+    int16_t correction;
+    int16_t leftSpeed;
+    int16_t rightSpeed;
+
+    /*
+     * 外侧修正只给当前周期一个固定差速，不进入强制转向状态。
+     * S1 看到线就往左咬，S8 看到线就往右咬。
+     */
+    if ((leftOuter != 0U) && (rightOuter == 0U)) {
+        correction = -NAV_OUTER_GUARD_CORRECTION;
+    } else if ((rightOuter != 0U) && (leftOuter == 0U)) {
+        correction = NAV_OUTER_GUARD_CORRECTION;
+    } else {
+        return 0U;
+    }
+
+    Tracking_Correction = correction;
+    leftSpeed = NAV_LimitSpeed((int32_t)NAV_OUTER_GUARD_SPEED + correction);
+    rightSpeed = NAV_LimitSpeed((int32_t)NAV_OUTER_GUARD_SPEED - correction);
+    Motor_SetSpeed(leftSpeed, rightSpeed);
+
+    gLastControlError = Tracking_Error;
+    return 1U;
+}
+#endif
+
 static void NAV_UpdateLastOuterLineSide(void)
 {
     uint8_t mask = Tracking_GetLineMask();
@@ -220,6 +259,12 @@ static void NAV_UpdateLastOuterLineSide(void)
     } else {
         gLastOuterLineSide = 0;
     }
+}
+
+#if NAV_LOST_SEARCH_ENABLE
+static void NAV_ClearLostSearchState(void)
+{
+    gSearchOuterLineSide = 0;
 }
 
 static void NAV_LostSearchStep(void)
@@ -256,6 +301,7 @@ static void NAV_LostSearchStep(void)
     Tracking_Correction = turn;
     Motor_SetSpeed(leftSpeed, rightSpeed);
 }
+#endif
 
 static void NAV_FinishTurn(void)
 {
@@ -286,6 +332,11 @@ static void NAV_FallbackWhenGyroMissing(void)
     /* 如果陀螺仪没数据，不要卡死在转向状态，优先保持小车可控。 */
     if (Tracking_LineDetected != 0U) {
         gMode = NAV_MODE_LINE;
+#if NAV_OUTER_GUARD_ENABLE
+        if (NAV_OuterGuardStep() != 0U) {
+            return;
+        }
+#endif
         NAV_LineFollowFromCurrentError();
         return;
     }
@@ -430,6 +481,11 @@ void NAV_ControlStep(void)
     if (Tracking_LineDetected != 0U) {
         /* 普通巡线分支。 */
         gMode = NAV_MODE_LINE;
+#if NAV_OUTER_GUARD_ENABLE
+        if (NAV_OuterGuardStep() != 0U) {
+            return;
+        }
+#endif
         NAV_LineFollowFromCurrentError();
         return;
     }
