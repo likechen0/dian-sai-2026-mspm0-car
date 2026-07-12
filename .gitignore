@@ -1,0 +1,27 @@
+# CCS/TI build outputs
+*.o
+*.d
+*.d_raw
+*.out
+*.map
+*.xml
+*.dot
+*.log
+
+# Keep only the generated text files that this current CCS project needs.
+Debug/*
+!Debug/makefile
+!Debug/sources.mk
+!Debug/objects.mk
+!Debug/subdir_vars.mk
+!Debug/subdir_rules.mk
+!Debug/ti_msp_dl_config.c
+!Debug/ti_msp_dl_config.h
+!Debug/device_linker.cmd
+!Debug/device.opt
+!Debug/device.cmd.genlibs
+
+# Local editor/system files
+*.bak
+*.tmp
+Thumbs.db
