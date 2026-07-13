@@ -6,12 +6,11 @@
 #include "InertialNav.h"
 
 /*
- * 0 = 阈值调试模式（显示八路 0/1 LineMask + 误差，电机不转）
- * 1 = 校准模式（显示 8 路原始 ADC，用于读取黑白标定值）
- *
- * 当前为阈值调试模式，OLED 第 3 行 S: 实时显示八路 0/1 状态。
+ * 显示模式由 Display.h 中的 TRACKING_DISPLAY_MODE 宏控制：
+ *   0 = 01 检查模式：显示八路 0/1 线状态 + 误差
+ *   1 = ADC 获取模式：显示八路原始 ADC 值
+ * 详见 Display.h 头注释。
  */
-#define DISPLAY_CALIBRATION_MODE  0U
 
 static void Display_ShowSensorMask(uint8_t line, uint8_t column, uint8_t mask)
 {
@@ -102,7 +101,7 @@ void Display_Init(void)
     OLED_Init();
     OLED_Clear();
 
-#if DISPLAY_CALIBRATION_MODE
+#if TRACKING_DISPLAY_MODE
     OLED_ShowString(1, 1, "CH1:----        ");
     OLED_ShowString(2, 1, "CH2:----        ");
     OLED_ShowString(3, 1, "CH3:----        ");
@@ -125,7 +124,7 @@ void Display_Update(void)
     }
     divider = 0;
 
-#if DISPLAY_CALIBRATION_MODE
+#if TRACKING_DISPLAY_MODE
     Display_ShowCalibration();
 #else
     Display_ShowDebugInfo();
