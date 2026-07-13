@@ -1,4 +1,4 @@
-# heyvhao - 感为八路灰度循迹版（PID 待调）
+# heyvhao - 感为八路灰度循迹版（双宏开关）
 
 这是从 `ganv` 新建出来的 MSPM0G3507 小车工程，功能逻辑保持感为八路灰度循迹版本不变，主要工作是按新的 `pinout.md` 重新映射引脚。
 
@@ -9,14 +9,14 @@
 - 电机驱动：TB6612
 - 循迹传感器：感为无 MCU 八路灰度
 - PWM：TIMG0，周期 1000，占空比命令范围 0..10000
-- OLED：显示左右轮编码器速度、8 路传感器识别情况、循迹误差
+- OLED：显示八路 0/1 线状态 / 八路原始 ADC / 陀螺仪角度 / 跟踪误差
 - 编译输出：`Debug/heyvhao.out`
 
 ## 本版本备注
 
-这一版是“感为传感器调车版”，重点是能看清传感器识别和左右轮速度，方便后续调 PID。
+这一版是”感为传感器调车版”，重点是能看清传感器识别和左右轮速度，方便后续调 PID。
 
-- 当前主要用于实车调参，PID/PD 还需要按你的车速、轮距、轮胎抓地、传感器高度继续调。
+- **新增双宏开关**：`TRACKING_RUN_MODE`（调试/巡线）和 `TRACKING_DISPLAY_MODE`（01检查/ADC获取），详见下方「双宏开关」章节。
 - 当前循迹参数入口在 `Tracking.h`：`TRACKING_BASE_SPEED`、`TRACKING_KP_NUM/DEN`、`TRACKING_KD_NUM/DEN`。
 - 当前功能开关入口在 `InertialNav.c`：离线追线、左右固定转、脱线导航转。
 - 目前三个高级开关默认都是关闭：先保证普通循迹稳定，再逐个打开测试。
@@ -105,14 +105,66 @@
 主循环在 `empty.c` 中调用：
 
 ```c
-NAV_ControlStep();
-Delay_ms(ENCODER_SAMPLE_MS);
-Encoder_Update();
-Display_Update();
-DL_GPIO_togglePins(RUN_LED_PORT, RUN_LED_LED_PIN);
+while (1) {
+#if TRACKING_RUN_MODE
+    /* 巡线模式：读传感器 → PD循迹/直行/陀螺仪转向 */
+    NAV_ControlStep();
+#else
+    /* 调试模式：只采集传感器数据刷新 OLED 显示，小车静止 */
+    Tracking_Value_Acquire();
+    Tracking_CalcError();
+    Motor_Stop();
+#endif
+    Delay_ms(ENCODER_SAMPLE_MS);
+    Encoder_Update();
+    Display_Update();
+    DL_GPIO_togglePins(RUN_LED_PORT, RUN_LED_LED_PIN);
+}
 ```
 
-所以实际小车控制入口是 `NAV_ControlStep()`，不是单独的 `Tracking_LineFollowStep()`。
+所以实际小车控制入口由 `TRACKING_RUN_MODE` 决定：
+- `0`：调试模式，小车静止，只刷新 OLED
+- `1`：巡线模式，走 `NAV_ControlStep()` 导航
+
+## 双宏开关
+
+工程通过两个编译期宏控制运行行为，改完重新编译烧录即可，无需改动代码。
+
+### TRACKING_RUN_MODE（位于 `empty.c`）
+
+| 值 | 模式 | 小车状态 | 说明 |
+| --- | --- | --- | --- |
+| `0` | 调试模式 | 静止 | 采集传感器，刷新 OLED，电机不转 |
+| `1` | 巡线模式 | 运行 | `NAV_ControlStep()` 导航状态机 |
+
+当前默认值：`1U`（巡线模式）。
+
+### TRACKING_DISPLAY_MODE（位于 `Display.h`，仅调试模式生效）
+
+| 值 | 模式 | OLED 显示内容 | 用途 |
+| --- | --- | --- | --- |
+| `0` | 01 检查 | 八路 0/1 线状态 + 误差 | 验证每路传感器阈值是否正常 |
+| `1` | ADC 获取 | 八路原始 ADC 值 | 手工采集黑白标定值 |
+
+当前默认值：`0U`（01 检查模式）。
+
+### 典型工作流
+
+```
+1. TRACKING_RUN_MODE=0, TRACKING_DISPLAY_MODE=1
+   → 小车静止，OLED 显示八路原始 ADC
+   → 传感器放白底 → 目视记录 8 个白值 → 写入 Tracking.c 的 Tracking_CalWhite[]
+   → 传感器放黑线 → 目视记录 8 个黑值 → 写入 Tracking.c 的 Tracking_CalBlack[]
+
+2. TRACKING_RUN_MODE=0, TRACKING_DISPLAY_MODE=0
+   → 小车静止，OLED 显示八路 0/1 线状态
+   → 放白底上对应位应为 0，放黑线上对应位应为 1
+   → 白底误判 1 → 增大 TRACKING_LINE_THRESHOLD
+   → 黑线误判 0 → 减小 TRACKING_LINE_THRESHOLD
+
+3. TRACKING_RUN_MODE=1
+   → 正式巡线，调 PD 参数
+```
 
 ### 感为 8 路采样
 
@@ -250,6 +302,31 @@ PID/PD 调参位置在 `Tracking.h`：
 不过稳定丢线计数仍然保留，OLED 上的计数可以用来观察小车经过黑线的次数。
 
 ## 调试入口
+
+### 黑白标定值采集
+
+1. `empty.c` 中设 `TRACKING_RUN_MODE = 0U`
+2. `Display.h` 中设 `TRACKING_DISPLAY_MODE = 1U`
+3. 编译烧录，小车静止，OLED 显示八路原始 ADC
+4. 传感器放白色地面 → 目视记录 8 个值 → 写入 `Tracking.c` 顶部 `Tracking_CalWhite[8]`
+5. 传感器放黑色线上 → 目视记录 8 个值 → 写入 `Tracking.c` 顶部 `Tracking_CalBlack[8]`
+6. `Display.h` 中改回 `TRACKING_DISPLAY_MODE = 0U`
+7. 重新编译烧录，进入 01 检查模式验证黑白区分是否正常
+
+### 阈值验证
+
+1. `TRACKING_RUN_MODE = 0U`，`TRACKING_DISPLAY_MODE = 0U`
+2. OLED 第 3 行 `S:` 显示八路 0/1 状态
+3. 放白底上 → 8 位应全为 0
+4. 放黑线上 → 对应位应为 1
+5. 如果白底误判为 1 → 增大 `Tracking.h` 中的 `TRACKING_LINE_THRESHOLD`
+6. 如果黑线误判为 0 → 减小 `Tracking.h` 中的 `TRACKING_LINE_THRESHOLD`
+
+### 正式巡线
+
+1. `empty.c` 中设 `TRACKING_RUN_MODE = 1U`
+2. 编译烧录，小车正常运行导航状态机
+3. 在 `Tracking.h` 中调 PD 参数
 
 感为黑白校准值在 `Tracking.c` 顶部：
 
