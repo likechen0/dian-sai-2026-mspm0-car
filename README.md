@@ -1,20 +1,33 @@
-# heyvhao - 感为八路灰度循迹版（双宏开关）
+# lkc - 新扩展板感为八路灰度循迹版
 
-这是从 `ganv` 新建出来的 MSPM0G3507 小车工程，功能逻辑保持感为八路灰度循迹版本不变，主要工作是按新的 `pinout.md` 重新映射引脚。
+这是以当前最新版 `heyvhao` 为母版新建的独立 CCS 工程。导航状态机、PD 循迹、编码器和 MS901M 解析逻辑保持不变，底层硬件按照官方原理图、PCB 图和实板连通测量重新配置。完整连接基准见 [`PINOUT.md`](PINOUT.md)。
 
 ## 当前状态
 
-- 工程名：`heyvhao`
+- 工程名：`lkc`
 - 主控：MSPM0G3507
 - 电机驱动：TB6612
 - 循迹传感器：感为无 MCU 八路灰度
-- PWM：TIMG0，周期 1000，占空比命令范围 0..10000
-- OLED：显示八路 0/1 线状态 / 八路原始 ADC / 陀螺仪角度 / 跟踪误差
-- 编译输出：`Debug/heyvhao.out`
+- PWM：左轮 TIMG7、右轮 TIMG12，周期均为 1000，占空比命令范围 0..10000
+- OLED：显示 U6/U16 编码器速度 / 八路 0/1 线状态 / 八路原始 ADC / 跟踪误差
+- 编译输出：`Debug/lkc.out`
+
+## 2026-07-13 原理图与实板复核
+
+已对照资料目录中的 `原理图.pdf`、`PCB图.png` 和实板信号完成复核：
+
+- `PB14` 实际连接 TB6612 的 `PWMA`，使用 `TIMG12_CCP1`。
+- `PA7` 实际连接 TB6612 的 `PWMB`，使用 `TIMG7_CCP1`。
+- `PA18` 没有连接 TB6612 PWM，只是普通引出脚。
+- 方向脚、U6/U16 编码器、八路灰度、OLED 和 UART0 均与当前 SysConfig 一致。
+
+旧自动提取表中的 `PWMA=PA18、PWMB=PB14` 是错误记录，已经废弃。此前 U16 的
+BO1/BO2 没有输出，正是因为真正的 PWMB/PA7 没有收到 PWM。详细核对结果和测量点见
+[`PINOUT.md`](PINOUT.md)。
 
 ## 本版本备注
 
-这一版是”感为传感器调车版”，重点是能看清传感器识别和左右轮速度，方便后续调 PID。
+这一版是新扩展板的感为传感器调车版，OLED 可查看 U6/U16 两轮编码器速度、八路原始 ADC、八路 0/1 识别和循迹误差。
 
 - **新增双宏开关**：`TRACKING_RUN_MODE`（调试/巡线）和 `TRACKING_DISPLAY_MODE`（01检查/ADC获取），详见下方「双宏开关」章节。
 - 当前循迹参数入口在 `Tracking.h`：`TRACKING_BASE_SPEED`、`TRACKING_KP_NUM/DEN`、`TRACKING_KD_NUM/DEN`。
@@ -23,14 +36,16 @@
 
 ## 左右轮通道
 
-当前已经还原到左右轮未互换的上一版：
+按小车实际安装位置定义逻辑左右：
 
 | 软件命令 | 实际使用通道 |
 | --- | --- |
-| 左轮 | PWMA + AIN1/AIN2 + 左编码器 |
-| 右轮 | PWMB + BIN1/BIN2 + 右编码器 |
+| 左轮 | U16 / R1：PWMB + BIN1/BIN2 + A2/B2 |
+| 右轮 | U6 / L1：PWMA + AIN1/AIN2 + A1/B1 |
 
-也就是说，`Motor_SetSpeed_L()` 驱动 A 桥，`Motor_SetSpeed_R()` 驱动 B 桥。
+也就是说，`Motor_SetSpeed_L()` 驱动 B 桥，`Motor_SetSpeed_R()` 驱动 A 桥。
+原理图中 A 路芯片输出与 `AO1/AO2` 网络已经交叉连接，而 B 路没有交叉；
+这是板级方向处理，当前代码不再额外反转任何一侧电机。
 
 ## 接线表
 
@@ -38,64 +53,98 @@
 
 | 软件侧 | TB6612 功能 | MSPM0G3507 |
 | --- | --- | --- |
-| 左轮 PWM | PWMA | PA12 / TIMG0_CCP0 |
-| 右轮 PWM | PWMB | PA13 / TIMG0_CCP1 |
-| 左轮方向 | AIN1 | PB17 |
-| 左轮方向 | AIN2 | PB19 |
-| 右轮方向 | BIN1 | PA16 |
-| 右轮方向 | BIN2 | PB24 |
+| 左轮 PWM | PWMB | PA7 / TIMG7_CCP1 |
+| 右轮 PWM | PWMA | PB14 / TIMG12_CCP1 |
+| 左轮方向 | BIN1 | PB9 |
+| 左轮方向 | BIN2 | PB6 |
+| 右轮方向 | AIN1 | PA13 |
+| 右轮方向 | AIN2 | PB10 |
 | 使能 | STBY | 硬接 +5V |
+
+这里的 PWM 网络已经同时通过原理图和 PCB 实测确认：`PB14` 连接 `PWMA`，`PA7`
+连接 `PWMB`。旧引脚文档中把 `PA18/PB14` 写成两路 PWM 的记录不适用于这块实板。
+
+### 四个电机接口
+
+原理图中的 `L1/L2/R1/R2` 与 PCB 丝印元件号对应如下：
+
+| PCB 接口 | 原理图名称 | 驱动通道 | 编码器反馈 | 两驱用途 |
+| --- | --- | --- | --- | --- |
+| U6 | L1 | A 桥 AO1/AO2 | A1/B1，PB11/PB12 | 逻辑右轮，必须使用 |
+| U7 | L2 | 与 U6 同一个 A 桥 | 无，Pin2..5 为 NC | 不用于两驱编码器轮 |
+| U16 | R1 | B 桥 BO1/BO2 | A2/B2，PB4/PB5 | 逻辑左轮，必须使用 |
+| U9 | R2 | 与 U16 同一个 B 桥 | 无，Pin2..5 为 NC | 不用于两驱编码器轮 |
+
+两驱车必须把两根六芯电机排线分别插在 `U6` 和 `U16`。如果接 `U6+U7`，
+两个电机会被同一个 A 桥同时控制，无法差速；如果接 U7 或 U9，对应电机虽然能转，
+但编码器读数必然为 0。
+
+`U6` 六针定义：Pin6=AO1、Pin5=3.3V、Pin4=A1、Pin3=B1、Pin2=GND、Pin1=AO2。
+
+`U16` 六针定义：Pin6=BO1、Pin5=3.3V、Pin4=A2、Pin3=B2、Pin2=GND、Pin1=BO2。
 
 ### 感为八路灰度
 
-| 功能 | MSPM0G3507 |
+| 灰度通道 | MSPM0G3507 / ADC |
 | --- | --- |
-| OUT | PA18 / ADC1_CH3 |
-| AD0 | PB25 |
-| AD1 | PB18 |
-| AD2 | PB21 |
-| EN | 悬空或 GND |
-| VCC | 5V |
-| GND | MSP GND |
+| S1 / OUT_1 | PB19 / ADC1_CH6 |
+| S2 / OUT_2 | PB17 / ADC1_CH4 |
+| S3 / OUT_3 | PA16 / ADC1_CH1 |
+| S4 / OUT_4 | PA14 / ADC0_CH12 |
+| S5 / OUT_5 | PB20 / ADC0_CH6 |
+| S6 / OUT_6 | PB25 / ADC0_CH4 |
+| S7 / OUT_7 | PA25 / ADC0_CH2 |
+| S8 / OUT_8 | PA27 / ADC0_CH0 |
+| VCC | 扩展板 H10 的 5V |
+| GND | 扩展板 H10 的 GND |
 
-注意：这里必须是 `ADC1_CH3`，不是 `ADC0_CH3`。
+八路都是独立模拟输入，不再使用旧版的 `OUT + AD0/AD1/AD2` 轮询接法。MSPM0 ADC 引脚电压不得超过 3.3V，首次接入其他型号传感器前应先测量其 OUT 最大电压。
 
 ### 编码器
 
 | 软件侧 | MSPM0G3507 |
 | --- | --- |
-| LEFT_A | PA26 |
-| LEFT_B | PA27 |
-| RIGHT_A | PA25 |
-| RIGHT_B | PA14 |
+| LEFT_A / A2 | PB4 |
+| LEFT_B / B2 | PB5 |
+| RIGHT_A / A1 | PB11 |
+| RIGHT_B / B1 | PB12 |
 
-源码里仍保留 `ENCODER_PORTB_*` 这个宏名前缀，是为了少改已有代码；实际生成端口是 GPIOA。
+四路编码器都位于 GPIOB，A 相使用双边沿中断，B 相用于判断方向。
+软件把 U16 的 A2/B2 作为左轮，把 U6 的 A1/B1 作为右轮。
+
+实测整车向前时两侧原始编码器符号相反，这是镜像安装造成的正常现象。当前尚未加入
+轮速 PI；正式加入 PI 或使用里程计前，需要在 `Encoder.h` 中把实际反号的一侧
+`ENCODER_*_DIR` 改为 `-1`，使向前时左右反馈都为正。
 
 ### MS901M / ATK-IMU901
 
 | UART 功能 | MSPM0G3507 |
 | --- | --- |
-| UART0_TX | PA0 |
-| UART0_RX | PA1 |
+| UART0_TX | PA10 |
+| UART0_RX | PA11 |
 
-实际接线要交叉：模块 TX 接 MSP 的 RX，也就是 PA1；模块 RX 接 MSP 的 TX，也就是 PA0。
+实际接线要交叉：模块 TX 接 MSP 的 RX，也就是 PA11；模块 RX 接 MSP 的 TX，也就是 PA10。
 
 ### OLED I2C
 
 | 功能 | MSPM0G3507 |
 | --- | --- |
-| SCL | PA31 |
-| SDA | PA28 |
-| VCC | 按 OLED 模块要求 |
-| GND | MSP GND |
+| SCL | PA1 |
+| SDA | PA0 |
+| VCC | 扩展板 OLED 插座 5V |
+| GND | 扩展板 OLED 插座 GND |
 
 ### 其他
 
 | 功能 | MSPM0G3507 |
 | --- | --- |
-| RUN_LED | PB27 |
+| RUN_LED | PA15 / LED1（低电平点亮） |
 
 ## 灰度传感器与循迹逻辑
+
+当前轮速属于开环控制：导航状态机和循迹 PD 直接给出左右 PWM，编码器只用于 OLED
+显示和里程信息，尚未反向修正 PWM。因此本工程是“循迹位置闭环 + 轮速开环”。后续若
+加入双轮速度 PI，建议保留当前 PWM 作为前馈，再用两个独立 PI 小幅修正左右轮差异。
 
 当前工程分成两层：
 
@@ -148,6 +197,10 @@ while (1) {
 
 当前默认值：`0U`（01 检查模式）。
 
+在模式 `0` 下，OLED 第 1 行显示 U16 左轮、第二行显示 U6 右轮最近约
+100 ms 的累计有符号脉冲数，例如 `L:+0200 C/100ms`。该值不是 RPM；
+它用于直接确认两侧编码器是否都有反馈以及方向符号是否一致。
+
 ### 典型工作流
 
 ```
@@ -168,13 +221,13 @@ while (1) {
 
 ### 感为 8 路采样
 
-感为无 MCU 八路灰度模块是 8 路共用一个模拟输出：
+新扩展板把八路模拟量直接接到两个 ADC。程序每个控制周期分别启动一次序列转换：
 
-- `OUT` 输出模拟灰度电压，接 `PA18 / ADC1_CH3`。
-- `AD0/AD1/AD2` 是三位地址选择线，分别接 `PB25/PB18/PB21`。
-- 程序通过改变 `AD0/AD1/AD2`，依次选择 S1 到 S8，然后读取 ADC。
+- `ADC1` 的 MEM0..MEM2 同时负责 S1..S3。
+- `ADC0` 的 MEM0..MEM4 同时负责 S4..S8。
+- 每个通道启用 4 次硬件平均，降低电机噪声和地面纹理造成的瞬时波动。
 
-每一路采样时，代码会读 5 次 ADC，丢掉前 2 次，只平均后 3 次。这样做是为了等模拟通道切换后稳定下来。
+因此一次采集即可得到完整八路数据，不再切换地址线，采样时序也比旧版更稳定。
 
 ### 黑白归一化
 
@@ -201,7 +254,7 @@ black_strength = 4096 - normal;
 当黑线强度超过 `TRACKING_LINE_THRESHOLD` 时，认为该路看到黑线。当前阈值是：
 
 ```c
-#define TRACKING_LINE_THRESHOLD 900U
+#define TRACKING_LINE_THRESHOLD 1000U
 ```
 
 ### 误差计算
@@ -237,11 +290,11 @@ rightSpeed = baseSpeed - correction;
 #define TRACKING_BASE_SPEED 2000
 #define TRACKING_KP_NUM     40
 #define TRACKING_KP_DEN     100
-#define TRACKING_KD_NUM     0
+#define TRACKING_KD_NUM     10
 #define TRACKING_KD_DEN     10
 ```
 
-也就是说当前 `Kp = 0.4`，`Kd = 0`。严格来说，现在主要是 P 控制，还没有开启 D 项。
+也就是说当前 `Kp = 0.4`，`Kd = 1.0`，属于 PD 控制。
 
 误差越大时，代码会自动降低基础速度，避免弯道速度太快冲出线。当前最低循迹速度限制在 `NAV_TRACK_MIN_SPEED = 1200`。
 
@@ -253,7 +306,7 @@ PID/PD 调参位置在 `Tracking.h`：
 | --- | --- |
 | `TRACKING_BASE_SPEED` | 普通循迹基础速度 |
 | `TRACKING_KP_NUM / TRACKING_KP_DEN` | P 项，越大越积极往线拉 |
-| `TRACKING_KD_NUM / TRACKING_KD_DEN` | D 项，抑制摆动，当前为 0 |
+| `TRACKING_KD_NUM / TRACKING_KD_DEN` | D 项，抑制快速摆动，当前为 1.0 |
 | `TRACKING_LINE_THRESHOLD` | 黑线识别阈值 |
 
 导航功能开关位置在 `InertialNav.c`：

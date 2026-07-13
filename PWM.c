@@ -2,13 +2,12 @@
 #include "ti_msp_dl_config.h"
 
 /*
- * TB6612 PWM module.
- *
- * heyvhao uses TIMG0:
- * channel 0 -> PA12 -> PWMA -> left wheel
- * channel 1 -> PA13 -> PWMB -> right wheel
+ * 新扩展板的两路 PWM 不在同一个定时器上：
+ *   PA7  -> TIMG7_CCP1  -> PWMB -> 逻辑左轮 U16
+ *   PB14 -> TIMG12_CCP1 -> PWMA -> 逻辑右轮 U6
+ * 两个定时器使用相同的分频和周期，因此占空比换算保持一致。
  */
-static uint32_t PWM_DutyToCompare(uint32_t duty)
+static uint32_t PWM_DutyToCompare(GPTIMER_Regs *timer, uint32_t duty)
 {
     uint32_t period;
 
@@ -16,30 +15,31 @@ static uint32_t PWM_DutyToCompare(uint32_t duty)
         duty = PWM_DUTY_MAX;
     }
 
-    period = DL_Timer_getLoadValue(PWM_0_INST);
-
+    period = DL_Timer_getLoadValue(timer);
     return period - ((duty * period) / PWM_DUTY_MAX);
 }
 
-static void PWM_SetChannel(uint16_t duty, DL_TIMER_CC_INDEX channel)
+static void PWM_SetChannel(
+    GPTIMER_Regs *timer, uint16_t duty, DL_TIMER_CC_INDEX channel)
 {
-    DL_Timer_setCaptureCompareValue(PWM_0_INST,
-        PWM_DutyToCompare(duty), channel);
+    DL_Timer_setCaptureCompareValue(
+        timer, PWM_DutyToCompare(timer, duty), channel);
 }
 
 void PWM_Init(void)
 {
     PWM_SetDuty_L(0);
     PWM_SetDuty_R(0);
-    DL_Timer_startCounter(PWM_0_INST);
+    DL_Timer_startCounter(PWM_LEFT_INST);
+    DL_Timer_startCounter(PWM_RIGHT_INST);
 }
 
 void PWM_SetDuty_L(uint16_t duty)
 {
-    PWM_SetChannel(duty, GPIO_PWM_0_C0_IDX);
+    PWM_SetChannel(PWM_LEFT_INST, duty, GPIO_PWM_LEFT_C1_IDX);
 }
 
 void PWM_SetDuty_R(uint16_t duty)
 {
-    PWM_SetChannel(duty, GPIO_PWM_0_C1_IDX);
+    PWM_SetChannel(PWM_RIGHT_INST, duty, GPIO_PWM_RIGHT_C1_IDX);
 }

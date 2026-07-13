@@ -6,7 +6,10 @@
 /* 编码器速度值表示这个采样窗口内收到的脉冲数。 */
 #define ENCODER_SAMPLE_MS 10U
 
-/* 如果 OLED 上显示的速度方向反了，就把对应宏改成 -1。 */
+/*
+ * 逻辑左轮：U16 的 A2/B2；逻辑右轮：U6 的 A1/B1。
+ * 如果正确前进时某一侧 OLED 显示负数，只修改对应 DIR，不改电机方向。
+ */
 #define ENCODER_LEFT_DIR  1
 #define ENCODER_RIGHT_DIR 1
 

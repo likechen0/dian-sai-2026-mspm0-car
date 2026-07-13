@@ -20,7 +20,7 @@ C_SRCS += \
 ../Tracking.c \
 ../empty.c \
 ./ti_msp_dl_config.c \
-D:/TI/mspm0_sdk_2_10_00_04/source/ti/devices/msp/m0p/startup_system_files/ticlang/startup_mspm0g350x_ticlang.c 
+C:/TI/mspm0_sdk_2_10_00_04/source/ti/devices/msp/m0p/startup_system_files/ticlang/startup_mspm0g350x_ticlang.c 
 
 GEN_CMDS += \
 ./device_linker.cmd 
@@ -116,7 +116,7 @@ C_SRCS__QUOTED += \
 "../Tracking.c" \
 "../empty.c" \
 "./ti_msp_dl_config.c" \
-"D:/TI/mspm0_sdk_2_10_00_04/source/ti/devices/msp/m0p/startup_system_files/ticlang/startup_mspm0g350x_ticlang.c" 
+"C:/TI/mspm0_sdk_2_10_00_04/source/ti/devices/msp/m0p/startup_system_files/ticlang/startup_mspm0g350x_ticlang.c" 
 
 SYSCFG_SRCS__QUOTED += \
 "../empty.syscfg" 

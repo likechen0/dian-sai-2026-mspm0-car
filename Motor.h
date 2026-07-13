@@ -12,7 +12,7 @@ void Motor_Init(void);
 /* 停止两路电机，但不关闭 TB6612 的 STBY。 */
 void Motor_Stop(void);
 
-/* heyvhao 里 STBY 硬接 +5V，这两个函数只保留接口兼容。 */
+/* lkc 扩展板上 STBY 硬接 +5V，这两个函数只保留接口兼容。 */
 void Motor_Enable(void);
 void Motor_Disable(void);
 
