@@ -15,15 +15,15 @@
  *         1 → ADC 获取（八路原始 ADC 值）
  *
  *   1 = 巡线模式：小车运行 NAV_ControlStep() 导航状态机，
- *       PD 循迹 / 白地直行 / 陀螺仪转向。
+ *       PID 循迹 / 白地直行 / 陀螺仪转向。
  *
  * 典型工作流：
  *   1. TRACKING_RUN_MODE=0, TRACKING_DISPLAY_MODE=1 → 采集黑白标定值
  *   2. 手动写入 Tracking.c 的 CalWhite/CalBlack
  *   3. TRACKING_RUN_MODE=0, TRACKING_DISPLAY_MODE=0 → 验证 01 区分正常
- *   4. TRACKING_RUN_MODE=1                     → 正式巡线，调 PD 参数
+ *   4. TRACKING_RUN_MODE=1                     → 正式巡线，调 PID 参数
  *
- * 巡线调参入口: Tracking.h 中 TRACKING_KP_NUM/DEN, TRACKING_KD_NUM/DEN
+ * 巡线调参入口: Tracking.h 中 TRACKING_KP/KI/KD_NUM/DEN
  */
 #define TRACKING_RUN_MODE 1U
 int main(void)
@@ -38,7 +38,7 @@ int main(void)
 
     while (1) {
 #if TRACKING_RUN_MODE
-        /* 巡线模式：读传感器 → PD循迹/直行/陀螺仪转向 */
+        /* 巡线模式：读传感器 → PID循迹/直行/陀螺仪转向 */
         NAV_ControlStep();
 #else
         /*

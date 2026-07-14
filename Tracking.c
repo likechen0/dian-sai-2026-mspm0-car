@@ -29,10 +29,12 @@ volatile uint8_t Ganv_Tracking_WhiteMask = 0xFFU;
 unsigned char LQ_Tracking_Value[TRACKING_CHANNEL_COUNT] = {0};
 volatile int16_t Tracking_Error = 0;
 volatile int16_t Tracking_Correction = 0;
+volatile int16_t Tracking_IntegralCorrection = 0;
 volatile uint8_t Tracking_LineDetected = 0;
 
 static int16_t Tracking_LastError = 0;
 static int16_t Tracking_LastControlError = 0;
+static int32_t Tracking_IntegralError = 0;
 
 static void Tracking_ShortDelay(void)
 {
@@ -49,6 +51,68 @@ static int16_t Tracking_LimitSpeed(int32_t speed)
         return -MOTOR_SPEED_MAX;
     }
     return (int16_t)speed;
+}
+
+static uint16_t Tracking_AbsError(int16_t error)
+{
+    int32_t value = error;
+
+    if (value < 0) {
+        value = -value;
+    }
+    return (uint16_t)value;
+}
+
+void Tracking_ResetIntegral(void)
+{
+    Tracking_IntegralError = 0;
+    Tracking_IntegralCorrection = 0;
+}
+
+int16_t Tracking_UpdateIntegral(int16_t error)
+{
+    int32_t integralOutput;
+    uint16_t absoluteError = Tracking_AbsError(error);
+
+#if TRACKING_KI_NUM == 0
+    Tracking_ResetIntegral();
+    return 0;
+#else
+    if ((Tracking_LineDetected == 0U) ||
+        (absoluteError > TRACKING_I_ACTIVE_ERROR)) {
+        Tracking_ResetIntegral();
+        return 0;
+    }
+
+    /* 进入相反方向的弯道时，丢弃上一段圆弧留下的转向偏置。 */
+    if (((Tracking_IntegralError > 0) &&
+         (error < -TRACKING_I_DEADBAND)) ||
+        ((Tracking_IntegralError < 0) &&
+         (error > TRACKING_I_DEADBAND))) {
+        Tracking_IntegralError = 0;
+    }
+
+    /* 很小的误差只保持 I 项，不继续累计传感器中心噪声。 */
+    if (absoluteError > TRACKING_I_DEADBAND) {
+        Tracking_IntegralError += error;
+        if (Tracking_IntegralError > TRACKING_I_ERROR_LIMIT) {
+            Tracking_IntegralError = TRACKING_I_ERROR_LIMIT;
+        } else if (Tracking_IntegralError < -TRACKING_I_ERROR_LIMIT) {
+            Tracking_IntegralError = -TRACKING_I_ERROR_LIMIT;
+        }
+    }
+
+    integralOutput =
+        (Tracking_IntegralError * TRACKING_KI_NUM) / TRACKING_KI_DEN;
+    if (integralOutput > TRACKING_I_OUTPUT_LIMIT) {
+        integralOutput = TRACKING_I_OUTPUT_LIMIT;
+    } else if (integralOutput < -TRACKING_I_OUTPUT_LIMIT) {
+        integralOutput = -TRACKING_I_OUTPUT_LIMIT;
+    }
+
+    Tracking_IntegralCorrection = (int16_t)integralOutput;
+    return Tracking_IntegralCorrection;
+#endif
 }
 
 static uint16_t Tracking_Normalize(uint8_t index, uint16_t raw)
@@ -168,6 +232,7 @@ uint16_t Tracking_GetLineStrength(uint8_t channel)
 
 void Tracking_Init(void)
 {
+    Tracking_ResetIntegral();
     Tracking_Adc_Init();
 }
 
@@ -328,6 +393,8 @@ void Tracking_LineFollowStep(void)
 
     if (Tracking_LineDetected == 0U) {
         Tracking_Correction = 0;
+        Tracking_ResetIntegral();
+        Tracking_LastControlError = error;
         Motor_Stop();
         return;
     }
@@ -336,6 +403,7 @@ void Tracking_LineFollowStep(void)
     Tracking_LastControlError = error;
 
     correction = ((int32_t)error * TRACKING_KP_NUM) / TRACKING_KP_DEN;
+    correction += Tracking_UpdateIntegral(error);
     correction += ((int32_t)derivative * TRACKING_KD_NUM) / TRACKING_KD_DEN;
 
     Tracking_Correction = Tracking_LimitSpeed(correction);

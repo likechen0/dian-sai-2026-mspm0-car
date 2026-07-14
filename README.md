@@ -1,4 +1,4 @@
-# heyvhao - 感为八路灰度循迹版（双宏开关）
+# heyvhao - 感为八路灰度圆环 PID 循迹版
 
 这是从 `ganv` 新建出来的 MSPM0G3507 小车工程，功能逻辑保持感为八路灰度循迹版本不变，主要工作是按新的 `pinout.md` 重新映射引脚。
 
@@ -9,15 +9,18 @@
 - 电机驱动：TB6612
 - 循迹传感器：感为无 MCU 八路灰度
 - PWM：TIMG0，周期 1000，占空比命令范围 0..10000
+- 循迹控制：带条件积分、积分分离和限幅保护的 PID
 - OLED：显示八路 0/1 线状态 / 八路原始 ADC / 陀螺仪角度 / 跟踪误差
 - 编译输出：`Debug/heyvhao.out`
 
 ## 本版本备注
 
-这一版是”感为传感器调车版”，重点是能看清传感器识别和左右轮速度，方便后续调 PID。
+这一版是在感为传感器调车版基础上加入圆环 PID。OLED 用于观察传感器识别、陀螺仪
+姿态和循迹误差，积分项用于补偿持续圆弧所需的固定转向偏置。
 
 - **新增双宏开关**：`TRACKING_RUN_MODE`（调试/巡线）和 `TRACKING_DISPLAY_MODE`（01检查/ADC获取），详见下方「双宏开关」章节。
-- 当前循迹参数入口在 `Tracking.h`：`TRACKING_BASE_SPEED`、`TRACKING_KP_NUM/DEN`、`TRACKING_KD_NUM/DEN`。
+- 当前循迹参数入口在 `Tracking.h`：`TRACKING_BASE_SPEED`、`TRACKING_KP_NUM/DEN`、`TRACKING_KI_NUM/DEN`、`TRACKING_KD_NUM/DEN`。
+- 普通循迹已经由 PD 升级为带条件积分和抗饱和的 PID，用 I 项补偿圆环持续曲率造成的稳态偏差。
 - 当前功能开关入口在 `InertialNav.c`：离线追线、左右固定转、脱线导航转。
 - 目前三个高级开关默认都是关闭：先保证普通循迹稳定，再逐个打开测试。
 
@@ -107,7 +110,7 @@
 ```c
 while (1) {
 #if TRACKING_RUN_MODE
-    /* 巡线模式：读传感器 → PD循迹/直行/陀螺仪转向 */
+    /* 巡线模式：读传感器 → PID循迹/直行/陀螺仪转向 */
     NAV_ControlStep();
 #else
     /* 调试模式：只采集传感器数据刷新 OLED 显示，小车静止 */
@@ -163,7 +166,7 @@ while (1) {
    → 黑线误判 0 → 减小 TRACKING_LINE_THRESHOLD
 
 3. TRACKING_RUN_MODE=1
-   → 正式巡线，调 PD 参数
+   → 正式巡线，调 PID 参数
 ```
 
 ### 感为 8 路采样
@@ -201,7 +204,7 @@ black_strength = 4096 - normal;
 当黑线强度超过 `TRACKING_LINE_THRESHOLD` 时，认为该路看到黑线。当前阈值是：
 
 ```c
-#define TRACKING_LINE_THRESHOLD 900U
+#define TRACKING_LINE_THRESHOLD 1000U
 ```
 
 ### 误差计算
@@ -226,7 +229,7 @@ S1     S2     S3     S4    S5    S6    S7    S8
 普通有线时，状态机会调用 `NAV_LineFollowFromCurrentError()`，核心逻辑是：
 
 ```c
-correction = error * Kp + derivative * Kd;
+correction = error * Kp + integral * Ki + derivative * Kd;
 leftSpeed  = baseSpeed + correction;
 rightSpeed = baseSpeed - correction;
 ```
@@ -235,25 +238,46 @@ rightSpeed = baseSpeed - correction;
 
 ```c
 #define TRACKING_BASE_SPEED 2000
-#define TRACKING_KP_NUM     40
+#define TRACKING_KP_NUM     21
 #define TRACKING_KP_DEN     100
-#define TRACKING_KD_NUM     0
+#define TRACKING_KI_NUM     3
+#define TRACKING_KI_DEN     200
+#define TRACKING_KD_NUM     12
 #define TRACKING_KD_DEN     10
 ```
 
-也就是说当前 `Kp = 0.4`，`Kd = 0`。严格来说，现在主要是 P 控制，还没有开启 D 项。
+也就是说当前有效值为 `Kp = 0.21`、`Ki = 0.015/控制周期`、`Kd = 1.2`。I 项只在有线且
+误差绝对值不超过 1200 时工作，输出限幅为 `±600`；误差过大、丢线、外侧固定修正、
+离线追线或陀螺仪转向时会清零，避免积分饱和。
+
+### 圆环条件积分
+
+积分并不是任何时候都无条件累加：
+
+- `|error| <= 40`：保持已有 I 项，不继续累计中心噪声。
+- `40 < |error| <= 1200`：累加误差，逐渐建立圆环所需的固定差速。
+- `|error| > 1200`：清零 I 项，由 P、D 负责快速追回。
+- 误差进入相反方向：清除上一段圆弧留下的积分，再向新方向积分。
+- 丢线、外侧固定修正、离线追线、陀螺仪转向：立即清零。
+
+当前积分误差限幅为 `±60000`，换算后的 I 项输出再限制为 `±600`，因此 I 项不会
+无限增大并压过 P、D。若圆环仍持续偏向一侧，可继续增大 `Ki`；若出圆环后回摆明显，
+应减小 `Ki` 或降低 `TRACKING_I_OUTPUT_LIMIT`。
 
 误差越大时，代码会自动降低基础速度，避免弯道速度太快冲出线。当前最低循迹速度限制在 `NAV_TRACK_MIN_SPEED = 1200`。
 
 ### 开关与调参速查
 
-PID/PD 调参位置在 `Tracking.h`：
+PID 调参位置在 `Tracking.h`：
 
 | 参数 | 作用 |
 | --- | --- |
 | `TRACKING_BASE_SPEED` | 普通循迹基础速度 |
 | `TRACKING_KP_NUM / TRACKING_KP_DEN` | P 项，越大越积极往线拉 |
-| `TRACKING_KD_NUM / TRACKING_KD_DEN` | D 项，抑制摆动，当前为 0 |
+| `TRACKING_KI_NUM / TRACKING_KI_DEN` | I 项，消除圆环中的持续偏差，当前为 0.015/周期 |
+| `TRACKING_KD_NUM / TRACKING_KD_DEN` | D 项，抑制摆动，当前为 1.2 |
+| `TRACKING_I_ACTIVE_ERROR` | 允许积分的最大误差，当前为 1200 |
+| `TRACKING_I_OUTPUT_LIMIT` | I 项最大差速贡献，当前为 ±600 |
 | `TRACKING_LINE_THRESHOLD` | 黑线识别阈值 |
 
 导航功能开关位置在 `InertialNav.c`：
@@ -264,7 +288,7 @@ PID/PD 调参位置在 `Tracking.h`：
 | `NAV_OUTER_GUARD_ENABLE` | `0U` | 左右固定转：S1/S8 单独识别到线时给固定差速修正 |
 | `NAV_ENABLE_LINE_TURN` | `0U` | 脱线导航转：有线到无线后按计数奇偶触发陀螺仪 45 度转向 |
 
-`0U` 表示关闭，`1U` 表示打开。建议顺序是先调普通 P/PD 循迹，再打开左右固定转，最后再测试离线追线或脱线导航转。
+`0U` 表示关闭，`1U` 表示打开。建议顺序是先调普通 PID 循迹，再打开左右固定转，最后再测试离线追线或脱线导航转。
 
 ### 外侧保护
 
@@ -326,7 +350,7 @@ PID/PD 调参位置在 `Tracking.h`：
 
 1. `empty.c` 中设 `TRACKING_RUN_MODE = 1U`
 2. 编译烧录，小车正常运行导航状态机
-3. 在 `Tracking.h` 中调 PD 参数
+3. 在 `Tracking.h` 中调 PID 参数
 
 感为黑白校准值在 `Tracking.c` 顶部：
 

@@ -35,18 +35,33 @@
 #define TRACKING_REVERSE_ORDER       0U
 
 /*
- * PID/PD 调参入口：
+ * PID 调参入口：
  * - TRACKING_BASE_SPEED 是普通循迹基础速度。
  * - Kp = TRACKING_KP_NUM / TRACKING_KP_DEN，负责把车拉回黑线。
+ * - Ki = TRACKING_KI_NUM / TRACKING_KI_DEN，每个控制周期累加一次，
+ *   用于补偿圆环等持续曲率造成的稳态偏差。
  * - Kd = TRACKING_KD_NUM / TRACKING_KD_DEN，负责抑制来回摆动。
  * 当前版本是感为传感器调车版，PID 还需要按实车速度、轮距、传感器高度继续调。
  * 误差范围大约为 -3500..3500。
  */
 #define TRACKING_BASE_SPEED          2000
-#define TRACKING_KP_NUM              40
+#define TRACKING_KP_NUM              21
 #define TRACKING_KP_DEN              100
-#define TRACKING_KD_NUM              10
+#define TRACKING_KI_NUM              3
+#define TRACKING_KI_DEN              200
+#define TRACKING_KD_NUM              12
 #define TRACKING_KD_DEN              10
+
+/*
+ * 条件积分与抗饱和：
+ * - 误差绝对值超过 ACTIVE_ERROR 时由 P/D 负责，I 项清零。
+ * - 误差落在 DEADBAND 内时保持现有 I 项，不继续积累传感器噪声。
+ * - I 项输出最多贡献 +/-600，避免长时间圆环后发生积分饱和。
+ */
+#define TRACKING_I_ACTIVE_ERROR      1200
+#define TRACKING_I_DEADBAND          40
+#define TRACKING_I_ERROR_LIMIT       60000L
+#define TRACKING_I_OUTPUT_LIMIT      600
 
 extern uint16_t Ganv_Tracking_Raw[TRACKING_CHANNEL_COUNT];
 extern uint16_t Ganv_Tracking_Normal[TRACKING_CHANNEL_COUNT];
@@ -61,6 +76,9 @@ extern volatile int16_t Tracking_Error;
 
 /* 最近一次差速修正量：左轮加 correction，右轮减 correction。 */
 extern volatile int16_t Tracking_Correction;
+
+/* 当前 PID 中 I 项单独贡献的差速修正量，便于调试观察。 */
+extern volatile int16_t Tracking_IntegralCorrection;
 
 /* 至少一路超过阈值时为 1。 */
 extern volatile uint8_t Tracking_LineDetected;
@@ -77,6 +95,10 @@ int16_t Tracking_CalcError(void);
 uint8_t Tracking_IsSensorOnLine(uint8_t channel);
 uint8_t Tracking_GetLineMask(void);
 uint16_t Tracking_GetLineStrength(uint8_t channel);
+
+/* 导航状态切换时清除积分；正常循迹时每个控制周期调用一次更新积分。 */
+void Tracking_ResetIntegral(void);
+int16_t Tracking_UpdateIntegral(int16_t error);
 
 /* 独立测试用函数，主程序实际走 InertialNav.c 的状态机。 */
 void Tracking_LineFollowStep(void);

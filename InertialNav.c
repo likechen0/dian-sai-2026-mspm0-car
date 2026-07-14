@@ -8,7 +8,7 @@
  *
  * 正常行为：
  *   - 没检测到线：按 NAV_FORWARD_SPEED 白地直行。
- *   - 检测到线：用 PD 修正左右轮速度，进行巡线。
+ *   - 检测到线：用 PID 修正左右轮速度，进行巡线。
  *   - 只有先稳定巡线，再稳定丢线，才计为一次“经过线”。
  *   - 计数为奇数左转 45 度，计数为偶数右转 45 度。
  *
@@ -18,7 +18,7 @@
  *   - NAV_LOST_SEARCH_ENABLE：离线追线。丢线后按最后外侧 S1/S8 方向追回。
  *   - NAV_OUTER_GUARD_ENABLE：左右固定转。外侧 S1/S8 识别到线时给固定差速修正。
  *   - NAV_ENABLE_LINE_TURN：脱线导航转。有线到无线后按计数奇偶触发陀螺仪 45 度转向。
- * 0 表示关闭，1 表示打开。调 PID 在 Tracking.h 里改 TRACKING_KP/KD。
+ * 0 表示关闭，1 表示打开。调 PID 在 Tracking.h 里改 TRACKING_KP/KI/KD。
  */
 #define NAV_FORWARD_SPEED       2000
 #define NAV_TURN_45_CDEG        4500
@@ -55,7 +55,7 @@
 #define NAV_RIGHT_RIGHT_SPEED   (-1800)
 
 typedef enum {
-    /* 有线状态：由 PD 修正控制左右轮。 */
+    /* 有线状态：由 PID 修正控制左右轮。 */
     NAV_MODE_LINE = 0,
 
     /* 无线状态：两轮同速，白地直行。 */
@@ -185,10 +185,11 @@ static void NAV_LineFollowFromCurrentError(void)
     int32_t correction;
     int16_t baseSpeed;
 
-    /* PD 控制：P 跟随位置误差，D 抑制误差突变。 */
+    /* PID：P 拉回位置，I 补偿圆弧稳态偏差，D 抑制误差突变。 */
     gLastControlError = error;
 
     correction = ((int32_t)error * TRACKING_KP_NUM) / TRACKING_KP_DEN;
+    correction += Tracking_UpdateIntegral(error);
     correction += ((int32_t)derivative * TRACKING_KD_NUM) / TRACKING_KD_DEN;
 
     Tracking_Correction = NAV_LimitSpeed(correction);
@@ -230,6 +231,7 @@ static uint8_t NAV_OuterGuardStep(void)
     }
 
     Tracking_Correction = correction;
+    Tracking_ResetIntegral();
     leftSpeed = NAV_LimitSpeed((int32_t)NAV_OUTER_GUARD_SPEED + correction);
     rightSpeed = NAV_LimitSpeed((int32_t)NAV_OUTER_GUARD_SPEED - correction);
     Motor_SetSpeed(leftSpeed, rightSpeed);
@@ -273,6 +275,8 @@ static void NAV_LostSearchStep(void)
     int16_t leftSpeed;
     int16_t rightSpeed;
 
+    Tracking_ResetIntegral();
+
     if (Tracking_LineDetected != 0U) {
         gMode = NAV_MODE_LINE;
         NAV_ClearLostSearchState();
@@ -309,6 +313,7 @@ static void NAV_FinishTurn(void)
     gMode = NAV_MODE_FORWARD;
     NAV_ClearLineState();
     Tracking_Correction = 0;
+    Tracking_ResetIntegral();
     Motor_SetSpeed(NAV_FORWARD_SPEED, NAV_FORWARD_SPEED);
 }
 
@@ -364,6 +369,7 @@ static void NAV_StartTurnCdeg(int16_t angleCdeg, int8_t yawSign,
     gTurnRightSpeed = rightSpeed;
     gTurnStepCount = 0;
     NAV_ClearLineState();
+    Tracking_ResetIntegral();
     gMode = NAV_MODE_GYRO_TURN;
 }
 
@@ -421,6 +427,7 @@ void NAV_Init(void)
     gTurnStepCount = 0;
     gLinePassCount = 0;
     NAV_ClearLineState();
+    Tracking_ResetIntegral();
 
     MS901M_Init();
 }
@@ -438,6 +445,9 @@ void NAV_ControlStep(void)
     /* 先刷新传感器，再根据结果切换状态。 */
     Tracking_Value_Acquire();
     Tracking_CalcError();
+    if (Tracking_LineDetected == 0U) {
+        Tracking_ResetIntegral();
+    }
     NAV_UpdateLastOuterLineSide();
     lineLost = NAV_UpdateLinePassCounter();
 
