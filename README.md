@@ -2,6 +2,8 @@
 
 这是从 `ganv` 新建出来的 MSPM0G3507 小车工程，功能逻辑保持感为八路灰度循迹版本不变，主要工作是按新的 `pinout.md` 重新映射引脚。
 
+项目各版本、硬件支线和功能演进关系见 [VERSION_HISTORY.md](./VERSION_HISTORY.md)。
+
 ## 当前状态
 
 - 工程名：`heyvhao`
@@ -9,20 +11,33 @@
 - 电机驱动：TB6612
 - 循迹传感器：感为无 MCU 八路灰度
 - PWM：TIMG0，周期 1000，占空比命令范围 0..10000
+- 控制周期：TIMG7 定时中断，严格 10 ms
 - 循迹控制：带条件积分、积分分离和限幅保护的 PID
 - OLED：显示八路 0/1 线状态 / 八路原始 ADC / 陀螺仪角度 / 跟踪误差
 - 编译输出：`Debug/heyvhao.out`
 
 ## 本版本备注
 
-这一版是在感为传感器调车版基础上加入圆环 PID。OLED 用于观察传感器识别、陀螺仪
-姿态和循迹误差，积分项用于补偿持续圆弧所需的固定转向偏置。
+这一版以圆环 PID 版为直接基础，进一步把控制时序改成由 TIMG7 驱动的严格 10 ms
+周期。OLED 用于观察传感器识别、陀螺仪姿态和循迹误差，积分项用于补偿持续圆弧
+所需的固定转向偏置。
 
 - **新增双宏开关**：`TRACKING_RUN_MODE`（调试/巡线）和 `TRACKING_DISPLAY_MODE`（01检查/ADC获取），详见下方「双宏开关」章节。
 - 当前循迹参数入口在 `Tracking.h`：`TRACKING_BASE_SPEED`、`TRACKING_KP_NUM/DEN`、`TRACKING_KI_NUM/DEN`、`TRACKING_KD_NUM/DEN`。
 - 普通循迹已经由 PD 升级为带条件积分和抗饱和的 PID，用 I 项补偿圆环持续曲率造成的稳态偏差。
+- 控制、编码器速度更新已从延时主循环迁到 10 ms 定时中断；OLED 每 100 ms 在主循环刷新。
+- MS901M UART 中断只接收字节到 256 字节环形缓冲区，协议解析在主循环完成。
 - 当前功能开关入口在 `InertialNav.c`：离线追线、左右固定转、脱线导航转。
 - 目前三个高级开关默认都是关闭：先保证普通循迹稳定，再逐个打开测试。
+
+### 本版结构优化的优点
+
+- **控制周期稳定**：PID、灰度采样、编码器速度更新和 PWM 输出固定每 10 ms 执行，不再受 OLED 刷新和主循环长度影响。
+- **实时与非实时任务分离**：控制放在定时中断；OLED 刷新和陀螺仪协议解析留在主循环，显示变慢不会直接拖慢循迹。
+- **UART 中断更短**：中断只把字节写入 256 字节环形缓冲区，校验、帧解析和数据搬移都延后到主循环。
+- **中断优先级明确**：编码器 GPIO 和 MS901M UART 为优先级 0，10 ms 控制定时器为优先级 1，短促的采集事件可以及时响应。
+- **启动顺序更可靠**：所有模块初始化完成后才启动控制定时器，避免 OLED、传感器或导航状态尚未就绪时电机提前执行。
+- **时序配置可检查**：控制周期、编码器采样周期、OLED 更新周期之间有编译期一致性检查，改错参数时会直接报错。
 
 ## 左右轮通道
 
@@ -105,29 +120,60 @@
 - `Tracking.c`：负责读取感为 8 路灰度、归一化 ADC、判断黑线、计算线的位置误差。
 - `InertialNav.c`：负责导航状态机，根据灰度结果决定直行、循迹、丢线追回或陀螺仪转向。
 
-主循环在 `empty.c` 中调用：
+### 实时任务结构
+
+当前不再使用 `Delay_ms(10)` 控制循环周期。SysConfig 使用 `TIMG7`
+生成严格的 10 ms 周期中断：
 
 ```c
-while (1) {
+void CONTROL_TIMER_INST_IRQHandler(void)
+{
+    Encoder_Update();
+
 #if TRACKING_RUN_MODE
-    /* 巡线模式：读传感器 → PID循迹/直行/陀螺仪转向 */
     NAV_ControlStep();
 #else
-    /* 调试模式：只采集传感器数据刷新 OLED 显示，小车静止 */
     Tracking_Value_Acquire();
     Tracking_CalcError();
     Motor_Stop();
 #endif
-    Delay_ms(ENCODER_SAMPLE_MS);
-    Encoder_Update();
-    Display_Update();
-    DL_GPIO_togglePins(RUN_LED_PORT, RUN_LED_LED_PIN);
 }
 ```
 
-所以实际小车控制入口由 `TRACKING_RUN_MODE` 决定：
+主循环只处理非实时任务：
+
+```c
+while (1) {
+    MS901M_Process();       /* 解析 UART 环形缓冲区 */
+    if (displayDue) {
+        Display_Update();   /* 100 ms 低速 OLED 任务 */
+    }
+    __WFI();
+}
+```
+
+中断优先级为：
+
+| 优先级 | 中断 | 工作 |
+| --- | --- | --- |
+| 0（高） | 编码器 GPIO | 累加左右轮脉冲 |
+| 0（高） | MS901M UART | 只把接收字节写入环形缓冲区 |
+| 1 | TIMG7 | 每 10 ms 更新编码器、灰度、PID 和 PWM |
+
+OLED 软件 I2C 即使正在刷新，也会被 10 ms 控制中断抢占，因此不会改变 PID
+采样周期。UART 协议校验、数据搬移和角度换算也已经移出 UART 中断。
+
+实际小车控制入口仍由 `TRACKING_RUN_MODE` 决定：
 - `0`：调试模式，小车静止，只刷新 OLED
-- `1`：巡线模式，走 `NAV_ControlStep()` 导航
+- `1`：巡线模式，每 10 ms 运行一次 `NAV_ControlStep()`
+
+OLED 刷新周期在 `Display.h` 的 `DISPLAY_UPDATE_PERIOD_MS` 修改，当前为
+`100U`。MS901M 环形缓冲溢出次数可通过
+`MS901M_GetRxQueueOverflowCount()` 查看；正常运行应一直为 0。
+
+如果以后修改控制周期，需要同时修改 `empty.syscfg` 的
+`CONTROL_TIMER.timerPeriod`、`empty.c` 的 `CONTROL_PERIOD_MS` 和
+`Encoder.h` 的 `ENCODER_SAMPLE_MS`，三者必须一致。
 
 ## 双宏开关
 
@@ -240,8 +286,8 @@ rightSpeed = baseSpeed - correction;
 #define TRACKING_BASE_SPEED 2000
 #define TRACKING_KP_NUM     21
 #define TRACKING_KP_DEN     100
-#define TRACKING_KI_NUM     3
-#define TRACKING_KI_DEN     200
+#define TRACKING_KI_NUM     1
+#define TRACKING_KI_DEN     100
 #define TRACKING_KD_NUM     12
 #define TRACKING_KD_DEN     10
 ```
@@ -274,7 +320,7 @@ PID 调参位置在 `Tracking.h`：
 | --- | --- |
 | `TRACKING_BASE_SPEED` | 普通循迹基础速度 |
 | `TRACKING_KP_NUM / TRACKING_KP_DEN` | P 项，越大越积极往线拉 |
-| `TRACKING_KI_NUM / TRACKING_KI_DEN` | I 项，消除圆环中的持续偏差，当前为 0.015/周期 |
+| `TRACKING_KI_NUM / TRACKING_KI_DEN` | I 项，消除圆环中的持续偏差，当前为 0.01/周期 |
 | `TRACKING_KD_NUM / TRACKING_KD_DEN` | D 项，抑制摆动，当前为 1.2 |
 | `TRACKING_I_ACTIVE_ERROR` | 允许积分的最大误差，当前为 1200 |
 | `TRACKING_I_OUTPUT_LIMIT` | I 项最大差速贡献，当前为 ±600 |

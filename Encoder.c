@@ -131,6 +131,7 @@ void Encoder_Init(void)
     /* 使能两个编码器 A 相所在 GPIO 组中断。 */
     DL_GPIO_clearInterruptStatus(ENCODER_PORTB_PORT,
         ENCODER_PORTB_LEFT_A_PIN | ENCODER_PORTB_RIGHT_A_PIN);
+    NVIC_SetPriority(ENCODER_PORTB_INT_IRQN, 0U);
     NVIC_EnableIRQ(ENCODER_PORTB_INT_IRQN);
 }
 

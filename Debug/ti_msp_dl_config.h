@@ -97,6 +97,14 @@ extern "C" {
 
 
 
+/* Defines for CONTROL_TIMER */
+#define CONTROL_TIMER_INST                                               (TIMG7)
+#define CONTROL_TIMER_INST_IRQHandler                           TIMG7_IRQHandler
+#define CONTROL_TIMER_INST_INT_IRQN                             (TIMG7_INT_IRQn)
+#define CONTROL_TIMER_INST_LOAD_VALUE                                    (9999U)
+
+
+
 /* Defines for UART_0 */
 #define UART_0_INST                                                        UART0
 #define UART_0_INST_FREQUENCY                                           32000000
@@ -206,6 +214,7 @@ void SYSCFG_DL_initPower(void);
 void SYSCFG_DL_GPIO_init(void);
 void SYSCFG_DL_SYSCTL_init(void);
 void SYSCFG_DL_PWM_0_init(void);
+void SYSCFG_DL_CONTROL_TIMER_init(void);
 void SYSCFG_DL_UART_0_init(void);
 void SYSCFG_DL_ADC12_0_init(void);
 

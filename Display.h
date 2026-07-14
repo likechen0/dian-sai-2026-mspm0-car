@@ -27,8 +27,11 @@
  */
 #define TRACKING_DISPLAY_MODE  0U
 
-/* OLED update divider based on the main 10 ms control loop. */
-#define DISPLAY_UPDATE_DIVIDER 10U
+/*
+ * OLED 由主循环按该周期刷新，不在中断中执行。
+ * 该值必须是 ENCODER_SAMPLE_MS 的整数倍。
+ */
+#define DISPLAY_UPDATE_PERIOD_MS 100U
 
 void Display_Init(void);
 void Display_Update(void);

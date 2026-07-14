@@ -47,8 +47,8 @@
 #define TRACKING_BASE_SPEED          2000
 #define TRACKING_KP_NUM              21
 #define TRACKING_KP_DEN              100
-#define TRACKING_KI_NUM              3
-#define TRACKING_KI_DEN              200
+#define TRACKING_KI_NUM              1
+#define TRACKING_KI_DEN              100
 #define TRACKING_KD_NUM              12
 #define TRACKING_KD_DEN              10
 

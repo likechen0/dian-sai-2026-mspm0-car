@@ -20,6 +20,8 @@
 #define MS901M_ATK_EULER_PAYLOAD_SIZE 6U
 #define MS901M_ATK_MAX_PAYLOAD_SIZE   24U
 #define MS901M_RX_BUFFER_SIZE         40U
+#define MS901M_RX_QUEUE_SIZE          256U
+#define MS901M_RX_QUEUE_MASK          (MS901M_RX_QUEUE_SIZE - 1U)
 
 static volatile int16_t gYawRawCdeg;
 static volatile int16_t gRollCdeg;
@@ -32,6 +34,10 @@ static volatile uint8_t gLastFrameId;
 static volatile uint8_t gLastErrorCode;
 static volatile uint8_t gRecentBytes[4];
 static volatile bool gAngleOk;
+static volatile uint8_t gRxQueue[MS901M_RX_QUEUE_SIZE];
+static volatile uint16_t gRxQueueHead;
+static volatile uint16_t gRxQueueTail;
+static volatile uint16_t gRxQueueOverflowCount;
 
 static int16_t MS901M_ToInt16(const uint8_t *p)
 {
@@ -122,6 +128,9 @@ void MS901M_Init(void)
     gBadFrameCount = 0;
     gLastFrameId = 0;
     gLastErrorCode = 0;
+    gRxQueueHead = 0U;
+    gRxQueueTail = 0U;
+    gRxQueueOverflowCount = 0U;
     for (uint8_t i = 0; i < 4U; i++) {
         gRecentBytes[i] = 0;
     }
@@ -136,7 +145,40 @@ void MS901M_Init(void)
         DL_UART_MAIN_INTERRUPT_PARITY_ERROR |
         DL_UART_MAIN_INTERRUPT_BREAK_ERROR);
     NVIC_ClearPendingIRQ(UART_0_INST_INT_IRQN);
+    NVIC_SetPriority(UART_0_INST_INT_IRQN, 0U);
     NVIC_EnableIRQ(UART_0_INST_INT_IRQN);
+}
+
+/*
+ * UART 中断只负责把字节放入单生产者/单消费者环形缓冲区。
+ * 协议校验、memmove 和角度换算全部由主循环执行。
+ */
+static void MS901M_QueueByteFromISR(uint8_t byte)
+{
+    uint16_t head = gRxQueueHead;
+    uint16_t next = (uint16_t)((head + 1U) & MS901M_RX_QUEUE_MASK);
+
+    if (next == gRxQueueTail) {
+        gRxQueueOverflowCount = MS901M_CountUp(gRxQueueOverflowCount);
+        gLastErrorCode = 6U;
+        return;
+    }
+
+    gRxQueue[head] = byte;
+    __DMB();
+    gRxQueueHead = next;
+}
+
+void MS901M_Process(void)
+{
+    while (gRxQueueTail != gRxQueueHead) {
+        uint16_t tail = gRxQueueTail;
+        uint8_t byte = gRxQueue[tail];
+
+        gRxQueueTail =
+            (uint16_t)((tail + 1U) & MS901M_RX_QUEUE_MASK);
+        MS901M_PushByte(byte);
+    }
 }
 
 void MS901M_PushByte(uint8_t byte)
@@ -251,6 +293,11 @@ uint16_t MS901M_GetBadFrameCount(void)
     return gBadFrameCount;
 }
 
+uint16_t MS901M_GetRxQueueOverflowCount(void)
+{
+    return gRxQueueOverflowCount;
+}
+
 uint8_t MS901M_GetLastFrameId(void)
 {
     return gLastFrameId;
@@ -283,7 +330,8 @@ int16_t MS901M_YawErrorCdeg(int16_t target, int16_t current)
 static void MS901M_DrainRxFifo(void)
 {
     while (!DL_UART_Main_isRXFIFOEmpty(UART_0_INST)) {
-        MS901M_PushByte(DL_UART_Main_receiveData(UART_0_INST));
+        MS901M_QueueByteFromISR(
+            DL_UART_Main_receiveData(UART_0_INST));
     }
 }
 

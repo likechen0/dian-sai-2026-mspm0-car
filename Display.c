@@ -12,6 +12,7 @@
  * 详见 Display.h 头注释。
  */
 
+#if !TRACKING_DISPLAY_MODE
 static void Display_ShowSensorMask(uint8_t line, uint8_t column, uint8_t mask)
 {
     uint8_t i;
@@ -21,12 +22,14 @@ static void Display_ShowSensorMask(uint8_t line, uint8_t column, uint8_t mask)
             ((mask & (uint8_t)(1U << i)) != 0U) ? '1' : '0');
     }
 }
+#endif
 
 /*
  * 校准显示：一页显示 8 路原始 ADC。
  * 每行两路，4 行刚好 8 路。
  * 格式：1:1234 2:1234
  */
+#if TRACKING_DISPLAY_MODE
 static void Display_ShowCalibration(void)
 {
     uint8_t line;
@@ -46,6 +49,7 @@ static void Display_ShowCalibration(void)
         OLED_ShowNum((uint8_t)(line + 1U), 11, Ganv_Tracking_Raw[chR - 1U], 4);
     }
 }
+#endif
 
 /*
  * 陀螺仪 YPR + 巡线显示：
@@ -56,6 +60,7 @@ static void Display_ShowCalibration(void)
  */
 
 /* 将 0.01° 转为 0.1° 并在指定位置显示 (格式: ±xxx.x) */
+#if !TRACKING_DISPLAY_MODE
 static void Display_ShowAngle(uint8_t line, uint8_t col, int32_t cdeg)
 {
     int32_t  tdeg = cdeg / 10;                       /* 0.01° → 0.1° */
@@ -95,6 +100,7 @@ static void Display_ShowDebugInfo(void)
     OLED_ShowString(4, 8, " L:");
     OLED_ShowNum(4, 11, Tracking_LineDetected ? 1U : 0U, 1);
 }
+#endif
 
 void Display_Init(void)
 {
@@ -116,14 +122,6 @@ void Display_Init(void)
 
 void Display_Update(void)
 {
-    static uint8_t divider = 0;
-
-    divider++;
-    if (divider < DISPLAY_UPDATE_DIVIDER) {
-        return;
-    }
-    divider = 0;
-
 #if TRACKING_DISPLAY_MODE
     Display_ShowCalibration();
 #else

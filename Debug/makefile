@@ -4,7 +4,7 @@
 
 SHELL = cmd.exe
 
-CG_TOOL_ROOT := D:/TI/ccs/tools/compiler/ti-cgt-armllvm_5.1.1.LTS
+CG_TOOL_ROOT := D:/ti/ccs2100/ccs/tools/compiler/ti-cgt-armllvm_5.1.1.LTS
 
 GEN_OPTS__FLAG := @"./device.opt" 
 GEN_CMDS__FLAG := -Wl,-l"./device_linker.cmd" 
@@ -138,7 +138,7 @@ all: $(OBJS) $(GEN_CMDS)
 # Tool invocations
 heyvhao.out: $(OBJS) $(GEN_CMDS)
 	@echo 'Arm Linker - building target: "$@"'
-	"D:/TI/ccs/tools/compiler/ti-cgt-armllvm_5.1.1.LTS/bin/tiarmclang.exe" @"device.opt"  -march=thumbv6m -mcpu=cortex-m0plus -mfloat-abi=soft -mlittle-endian -mthumb -O2 -gdwarf-3 -Wall -Wl,-m"heyvhao.map" -Wl,-i"D:/TI/mspm0_sdk_2_10_00_04/source" -Wl,-i"D:/Diansai/heyvhao-test" -Wl,-i"D:/Diansai/heyvhao-test/Debug/syscfg" -Wl,-i"D:/TI/ccs/tools/compiler/ti-cgt-armllvm_5.1.1.LTS/lib" -Wl,--diag_wrap=off -Wl,--display_error_number -Wl,--warn_sections -Wl,--xml_link_info="heyvhao_linkInfo.xml" -Wl,--rom_model -o "heyvhao.out" $(ORDERED_OBJS)
+	"D:/ti/ccs2100/ccs/tools/compiler/ti-cgt-armllvm_5.1.1.LTS/bin/tiarmclang.exe" @"device.opt"  -march=thumbv6m -mcpu=cortex-m0plus -mfloat-abi=soft -mlittle-endian -mthumb -O2 -gdwarf-3 -Wall -Wl,-m"heyvhao.map" -Wl,-i"C:/TI/mspm0_sdk_2_10_00_04/source" -Wl,-i"C:/Users/Lenovo/workspace_ccstheia/heyvhao" -Wl,-i"C:/Users/Lenovo/workspace_ccstheia/heyvhao/Debug/syscfg" -Wl,-i"D:/ti/ccs2100/ccs/tools/compiler/ti-cgt-armllvm_5.1.1.LTS/lib" -Wl,--diag_wrap=off -Wl,--display_error_number -Wl,--warn_sections -Wl,--xml_link_info="heyvhao_linkInfo.xml" -Wl,--rom_model -o "heyvhao.out" $(ORDERED_OBJS)
 	@echo 'Finished building target: "$@"'
 	@echo ' '
 

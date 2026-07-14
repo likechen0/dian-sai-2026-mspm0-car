@@ -18,6 +18,8 @@ const GPIO6  = GPIO.addInstance();
 const PWM    = scripting.addModule("/ti/driverlib/PWM", {}, false);
 const PWM1   = PWM.addInstance();
 const SYSCTL = scripting.addModule("/ti/driverlib/SYSCTL");
+const TIMER  = scripting.addModule("/ti/driverlib/TIMER", {}, false);
+const TIMER1 = TIMER.addInstance();
 const UART   = scripting.addModule("/ti/driverlib/UART", {}, false);
 const UART1  = UART.addInstance();
 const Board  = scripting.addModule("/ti/driverlib/Board", {}, false);
@@ -116,6 +118,19 @@ PWM1.PWM_CHANNEL_0.$name        = "PWMA";
 PWM1.PWM_CHANNEL_0.dutyCycle    = 0;
 PWM1.PWM_CHANNEL_1.$name        = "PWMB";
 PWM1.PWM_CHANNEL_1.dutyCycle    = 0;
+
+/*
+ * 固定 10 ms 控制周期。定时器由 main() 在全部模块初始化后启动，
+ * 避免 SYSCFG_DL_init() 期间提前进入控制中断。
+ */
+TIMER1.$name              = "CONTROL_TIMER";
+TIMER1.timerMode          = "PERIODIC";
+TIMER1.timerPeriod        = "10 ms";
+TIMER1.timerClkDiv        = 8;
+TIMER1.timerClkPrescale   = 4;
+TIMER1.interrupts         = ["ZERO"];
+TIMER1.timerStartTimer    = false;
+TIMER1.peripheral.$assign = "TIMG7";
 
 ADC121.$name                      = "ADC12_0";
 ADC121.sampClkSrc                 = "DL_ADC12_CLOCK_ULPCLK";

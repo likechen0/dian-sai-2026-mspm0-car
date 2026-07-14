@@ -6,6 +6,7 @@
 
 void MS901M_Init(void);
 void MS901M_PushByte(uint8_t byte);
+void MS901M_Process(void);
 
 bool MS901M_Available(void);
 int16_t MS901M_GetYawCdeg(void);
@@ -15,6 +16,7 @@ int16_t MS901M_GetPitchCdeg(void);
 uint16_t MS901M_GetRxByteCount(void);
 uint16_t MS901M_GetAngleFrameCount(void);
 uint16_t MS901M_GetBadFrameCount(void);
+uint16_t MS901M_GetRxQueueOverflowCount(void);
 uint8_t MS901M_GetLastFrameId(void);
 uint8_t MS901M_GetLastErrorCode(void);
 uint8_t MS901M_GetRecentByte(uint8_t index);
