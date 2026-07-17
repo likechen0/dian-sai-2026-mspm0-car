@@ -1,5 +1,11 @@
 # heyvhao - 感为八路灰度圆环 PID 循迹版
 
+> 发布标识：`2024-h-heyvhao`，用于 2024 年电赛 H 题小车控制。
+>
+> 引脚唯一基准：
+> `C:\Users\Lenovo\Documents\电赛\output\pinout\SCH_Schematic1_2026-06-13_pinout.md`。
+> `原理图_2025-07-17_pinout.md` 属于 `lkc`，不得用于本工程及其派生工程。
+
 这是从 `ganv` 新建出来的 MSPM0G3507 小车工程，功能逻辑保持感为八路灰度循迹版本不变，主要工作是按新的 `pinout.md` 重新映射引脚。
 
 项目各版本、硬件支线和功能演进关系见 [VERSION_HISTORY.md](./VERSION_HISTORY.md)。
